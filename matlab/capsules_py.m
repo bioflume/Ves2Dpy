@@ -118,6 +118,8 @@ Ben = zeros(2*o.N,2*o.N,o.nv);
 Ten = zeros(2*o.N,o.N,o.nv);
 Div = zeros(o.N,2*o.N,o.nv);
 
+D1 = fft1.fourierDiff(o.N);
+
 for k = 1:o.nv
   % compute single arclength derivative matrix
   isa = o.isa(:,k);
