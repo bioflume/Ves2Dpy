@@ -135,6 +135,8 @@ class fft1:
         Returns:
             ndarray: First derivative of the input functions.
         """
+        # N = f.shape[0]
+        # IK = np.concatenate((np.arange(0, N // 2), [0], np.arange(-N // 2 + 1, 0))) * 1j
         df = np.real(np.fft.ifft(IK * np.fft.fft(f, axis=0), axis=0))
         return df
 
@@ -145,12 +147,13 @@ class fft1:
         # fft and ifft to do spectral differentiation
 
         IK = 1j * np.concatenate((np.arange(0, N / 2), [0], np.arange(-N / 2 + 1, 0)))
+        IK = IK[:,None]
         if nv == 2:
             IK = np.column_stack((IK, IK))
         elif nv == 3:
             IK = np.column_stack((IK, IK, IK))
         elif nv > 3:
-            IK = np.tile(IK[:,None], (1, nv))
+            IK = np.tile(IK, (1, nv))
         return IK
 
     @staticmethod
