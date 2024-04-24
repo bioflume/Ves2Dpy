@@ -8,11 +8,13 @@ classdef MLARM_py
   advNetOutputNorm
   relaxNetInputNorm
   relaxNetOutputNorm
+  area0 % initial area of vesicle
+  len0 % initial length of vesicle
   end
 
   methods
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  function o = MLARM_py(dt,vinf,oc,advNetInputNorm,advNetOutputNorm)
+  function o = MLARM_py(dt,vinf,oc,advNetInputNorm,advNetOutputNorm,relaxNetInputNorm,relaxNetOutputNorm)
   o.dt = dt; % time step size
   o.vinf = vinf; % background flow (analytic -- input as function of vesicle config)
   o.oc = oc; % curve class
@@ -29,14 +31,22 @@ classdef MLARM_py
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   function Xnew = time_step(o,X)
   % take a time step with neural networks
-
+  oc = o.oc;
   vback = o.vinf(X);
 
   % 1) Translate vesicle with network
   Xadv = o.translateVinfNet(X,vback);
 
+  % Correct area and length
+  XadvC = oc.correctAreaAndLength(Xadv, o.area0, o.len0);
+  Xadv = oc.alignCenterAngle(Xadv, XadvC);
+
   % 2) Relax vesicle with network
-  Xnew = o.relaxNet(Xadv+X);
+  Xnew = o.relaxNet(Xadv);
+
+  % Correct area and length
+  XnewC = oc.correctAreaAndLength(Xnew, o.area0, o.len0);
+  Xnew = oc.alignCenterAngle(Xnew, XnewC);
   end % time_step
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   function Xadv = translateVinfNet(o,X,vback)
@@ -104,7 +114,10 @@ classdef MLARM_py
 
   % destandardize
   Xadv = o.destandardize(XnewStand,trans,rotate,scaling,sortIdx);
-  
+
+  % add the initial since solving dX/dt = (I-M)vinf
+  Xadv = X + Xadv;
+
   end % translateVinfNet
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   function Xnew = relaxNet(o,X)
@@ -231,25 +244,6 @@ classdef MLARM_py
   Xnew(end/2+1:end) = X(end/2+1:end)+transXY(2);
   end  % translateOp  
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  function vinf = setBgFlow(o,bgFlow,speed)
-    
-  vinf  = @(X) zeros(size(X));      
-  if strcmp(bgFlow,'relax')
-    vinf = @(X) zeros(size(X));  % relaxation
-  elseif strcmp(bgFlow,'shear') 
-    vinf = @(X) speed*[X(end/2+1:end,:);zeros(size(X(1:end/2,:)))]; 
-  elseif strcmp(bgFlow,'tayGreen')
-    vinf = @(X) speed*[sin(X(1:end/2,:)).*cos(X(end/2+1:end,:));-...
-      cos(X(1:end/2,:)).*sin(X(end/2+1:end,:))]; % Taylor-Green
-  elseif strcmp(bgFlow,'parabolic')
-    vinf = @(X) [speed*(1-(X(end/2+1:end,:)/1.3).^2);...
-        zeros(size(X(1:end/2,:)))];
-  elseif strcmp(bgFlow,'rotation')
-    vinf = @(X) [-sin(atan2(X(end/2+1:end,:),X(1:end/2,:)))./sqrt(X(1:end/2,:).^2+X(end/2+1:end,:).^2);...
-      cos(atan2(X(end/2+1:end,:),X(1:end/2,:)))./sqrt(X(1:end/2,:).^2+X(end/2+1:end,:).^2)]*speed;
-  end
-    
-  end % setBgFlow
   end % methods
 
 end % MLARM_py
