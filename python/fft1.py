@@ -115,13 +115,13 @@ class fft1:
             print(f'  {N} points: |e|_inf = {error}')
 
     
-    @staticmethod
-    def D1(N):
-        # Deriv = D1(N) constructs a N by N fourier differentiation matrix
-        FF, FFI = fft1.fourierInt(N)
-        Deriv = np.dot(FFI, np.dot(np.diag(1j * np.concatenate(([0], np.arange(-N / 2 + 1, N / 2)))), FF))
-        Deriv = np.real(Deriv)
-        return Deriv
+    # @staticmethod
+    # def D1(N):
+    #     # Deriv = D1(N) constructs a N by N fourier differentiation matrix
+    #     FF, FFI = fft1.fourierInt(N)
+    #     Deriv = np.dot(FFI, np.dot(np.diag(1j * np.concatenate(([0], np.arange(-N / 2 + 1, N / 2)))), FF))
+    #     Deriv = np.real(Deriv)
+    #     return Deriv
 
     @staticmethod
     def diffFT(f, IK):

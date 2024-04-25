@@ -127,13 +127,13 @@ end % methods
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 methods (Static)
 
-function Deriv = D1(N)
-% Deriv = D1(N) constructs a N by N fourier differentiation matrix
-[FF,FFI] = fft1.fourierInt(N);
-Deriv = FFI * diag(1i*([0 -N/2+1:N/2-1])) * FF;
-Deriv = real(Deriv);
+% function Deriv = D1(N)
+% % Deriv = D1(N) constructs a N by N fourier differentiation matrix
+% [FF,FFI] = fft1.fourierInt(N);
+% Deriv = FFI * diag(1i*([0 -N/2+1:N/2-1])) * FF;
+% Deriv = real(Deriv);
 
-end % D1
+% end % D1
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function df = diffFT(f,IK)
