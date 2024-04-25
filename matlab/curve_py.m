@@ -73,7 +73,7 @@ for k = 1 : nv
     Dy = real(ifft(1i*modes.*fft(y)));
     jac = sqrt(Dx.^2 + Dy.^2);
     tx = Dx./jac; ty = Dy./jac;
-    nx = ty; ny = -tx;
+    nx = ty; ny = -tx; % Shan: n is the right hand side of t
     rdotn = x.*nx + y.*ny;
     rho2 = x.^2 + y.^2;
 
@@ -83,7 +83,7 @@ for k = 1 : nv
     J22 = 0.25*sum(rdotn.*(rho2 - y.*y).*jac)*2*pi/N;
 
     J = [J11 J12; J21 J22];
-    [V,D] = eig(J);
+    [V,D] = eig(J); % V are the eigenvectors, D are the eigenvalues
     
     [~,ind] = min(abs(diag(D)));
     % make sure that the first components of e-vectors have the same sign
@@ -324,7 +324,7 @@ newAngle = newAngles(id);
 Xp = [X(1:end/2,k)-newMean(1); X(end/2+1:end,k)-newMean(2)];
 
 % tilt it to the original angle
-XpNew = zeros(size(Xp)); thet = 0;% -newAngle+initAngle;
+XpNew = zeros(size(Xp)); thet = -newAngle+initAngle;
 XpNew(1:end/2) = Xp(1:end/2)*cos(thet)-Xp(end/2+1:end)*sin(thet);
 XpNew(end/2+1:end) = Xp(1:end/2)*sin(thet)+Xp(end/2+1:end)*cos(thet);
 
@@ -347,8 +347,8 @@ jac = o.diffProp(X);
 jac1 = jac;
 tol = 1e-10;
 
-u = [];
-sigma = [];
+% u = [];
+% sigma = [];
 
 
 for k = 1:nv
@@ -362,22 +362,22 @@ for k = 1:nv
       zX = zX + zXh(j)*exp(1i*modes(j)*theta);
     end
     X(:,k) = o.setXY(real(zX),imag(zX));
-    if nargin > 2
-      zu = u(1:end/2,k) + 1i*u(end/2+1:end,k);
-      zuh = fft(zu)/N;
-      sigmah = fft(sigma(:,k))/N;
-      zu = zeros(N,1);
-      sigma(:,k) = zeros(N,1);
-      for j = 1:N
-        zu = zu + zuh(j)*exp(1i*modes(j)*theta);
-        sigma(:,k) = sigma(:,k) + sigmah(j)*exp(1i*modes(j)*theta);
-      end
-      sigma = real(sigma);
-      u(:,k) = o.setXY(real(zu),imag(zu));
-    else
-      u = [];
-      sigma = [];
-    end
+    % if nargin > 2
+    %   zu = u(1:end/2,k) + 1i*u(end/2+1:end,k);
+    %   zuh = fft(zu)/N;
+    %   sigmah = fft(sigma(:,k))/N;
+    %   zu = zeros(N,1);
+    %   sigma(:,k) = zeros(N,1);
+    %   for j = 1:N
+    %     zu = zu + zuh(j)*exp(1i*modes(j)*theta);
+    %     sigma(:,k) = sigma(:,k) + sigmah(j)*exp(1i*modes(j)*theta);
+    %   end
+    %   sigma = real(sigma);
+    %   u(:,k) = o.setXY(real(zu),imag(zu));
+    % else
+    %   u = [];
+    %   sigma = [];
+    % end
     % redistribute the vesicle positions and tension so that it is
     % equispaced in arclength
   end
@@ -515,16 +515,16 @@ end % end computeProjectedGradEnergy
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 methods (Static)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function f = arcDeriv(f,m,sa,IK)
+function f = arcDeriv(f,m,isa,IK)
 % f = arcDeriv(f,m,s,IK,col) is the arclength derivative of order m.
 % f is a matrix of scalar functions (each function is a column)
 % f is assumed to have an arbitrary parametrization
-% sa = d s/ d a, where a is the aribtrary parameterization
+% isa = d a/ d s, where a is the aribtrary parameterization
 % IK is the fourier modes which is saved and used to accelerate 
 % this routine
 
 for j=1:m
-  f = sa.*ifft(IK.*fft(f));
+  f = isa.*ifft(IK.*fft(f));
 end
 f = real(f);
 

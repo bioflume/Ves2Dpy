@@ -71,7 +71,7 @@ class Curve:
             tx = Dx / jac
             ty = Dy / jac
             nx = ty
-            ny = -tx
+            ny = -tx #Shan: n is the right hand side of t
             rdotn = x * nx + y * ny
             rho2 = x ** 2 + y ** 2
 
@@ -274,7 +274,7 @@ class Curve:
             # % move to (0,0) new shape
             Xp = np.concatenate((X[:X.shape[0] // 2, k] - newMean[0], X[X.shape[0] // 2:, k] - newMean[1]),axis=0)
             # % tilt it to the original angle
-            thet = 0  # -newAngle+initAngle
+            thet = -newAngle+initAngle
             XpNew = np.zeros_like(Xp)
             XpNew[:Xp.shape[0]//2] = Xp[:Xp.shape[0]//2] * np.cos(thet) - Xp[Xp.shape[0]//2:] * np.sin(thet)
             XpNew[Xp.shape[0]//2:] = Xp[:Xp.shape[0]//2] * np.sin(thet) + Xp[Xp.shape[0]//2:] * np.cos(thet)
@@ -295,8 +295,8 @@ class Curve:
         modes = np.concatenate((np.arange(0, N // 2), [0], np.arange(-N // 2 + 1, 0)))
         jac, _, _ = self.diffProp(X)
         tol = 1e-10
-        u = None
-        sigma = None
+        # u = None
+        # sigma = None
         X_out = np.zeros_like(X)
 
         for k in range(nv):
@@ -308,17 +308,17 @@ class Curve:
                 for j in range(N):
                     zX += zXh[j] * np.exp(1j * modes[j] * theta)
                 X_out[:, [k]] = self.setXY(np.real(zX)[:,None], np.imag(zX)[:,None])
-                if u is not None:
-                    zu = u[:N, k] + 1j * u[N:, k]
-                    zuh = np.fft.fft(zu) / N
-                    sigmah = np.fft.fft(sigma[:, k]) / N
-                    zu = np.zeros(N, dtype=np.complex64)
-                    sigma[:, k] = np.zeros(N)
-                    for j in range(N):
-                        zu += zuh[j] * np.exp(1j * modes[j] * theta)
-                        sigma[:, k] += sigmah[j] * np.exp(1j * modes[j] * theta)
-                    sigma = np.real(sigma)
-                    u[:, k] = self.setXY(np.real(zu), np.imag(zu))
+                # if u is not None:
+                #     zu = u[:N, k] + 1j * u[N:, k]
+                #     zuh = np.fft.fft(zu) / N
+                #     sigmah = np.fft.fft(sigma[:, k]) / N
+                #     zu = np.zeros(N, dtype=np.complex64)
+                #     sigma[:, k] = np.zeros(N)
+                #     for j in range(N):
+                #         zu += zuh[j] * np.exp(1j * modes[j] * theta)
+                #         sigma[:, k] += sigmah[j] * np.exp(1j * modes[j] * theta)
+                #     sigma = np.real(sigma)
+                #     u[:, k] = self.setXY(np.real(zu), np.imag(zu))
         return X_out, u, sigma
 
     def arcLengthParameter(o, x, y):
@@ -443,7 +443,7 @@ class Curve:
         
         return g
     
-    def arcDeriv(self, f, m, sa, IK):
+    def arcDeriv(self, f, m, isa, IK):
         """
         % f = arcDeriv(f,m,s,IK,col) is the arclength derivative of order m.
         % f is a matrix of scalar functions (each function is a column)
@@ -453,6 +453,6 @@ class Curve:
         % this routine
         """
         for _ in range(m):
-            f = sa * np.fft.ifft(IK * np.fft.fft(f, axis=0), axis=0)
+            f = isa * np.fft.ifft(IK * np.fft.fft(f, axis=0), axis=0)
             
         return np.real(f)
