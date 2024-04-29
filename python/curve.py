@@ -336,7 +336,7 @@ class Curve:
         # Find derivative
         arc = np.sqrt(Dx**2 + Dy**2)
         arch = np.fft.fft(arc.reshape(-1))
-        modes = -1j / np.hstack([(np.arange(N // 2)), 0, (np.arange(-N//2+1,0))])  # FFT modes
+        modes = -1j / np.hstack([1e-10, (np.arange(1,N // 2)), 1e-10, (np.arange(-N//2+1,0))])  # FFT modes
         modes[0] = 0
         modes[N // 2] = 0
         
