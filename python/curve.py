@@ -216,15 +216,17 @@ class Curve:
         # % by finding the shape Xnew that is closest to X in the L2 sense and
         # % has the same area and length as the original shape
 
+        # % tolConstraint (which controls area and length) comes from the area-length
+        # % tolerance for time adaptivity.
         
         # % Find the current area and length
-        _, a, l = self.geomProp(X)
-        eAt = np.abs((a - area0) / area0)
-        eLt = np.abs((l - length0) / length0)
+        # _, a, l = self.geomProp(X)
+        # eAt = np.abs((a - area0) / area0)
+        # eLt = np.abs((l - length0) / length0)
 
         N = X.shape[0] // 2
-        tolConstraint = 1e-2
-        tolFunctional = 1e-2
+        # tolConstraint = 1e-2
+        # tolFunctional = 1e-2
 
         options = {'maxiter': 3000, 'disp': False}
 
@@ -237,12 +239,17 @@ class Curve:
             cons = ({'type': 'eq', 'fun': lambda z: self.nonlcon(z, area0[k], length0[k])})
             res = minimize(minFun, X[:, k], constraints=cons, options=options)
             Xnew[:, k] = res.x
+            # print(res.message)
+            # print(f"function value{res.fun}") # , cons violation {res.maxcv}
+            if not res.success:
+                print('Correction scheme failed, do not correct at this step')
+                Xnew[:, k] = X[:,k]
 
         return Xnew
 
     def nonlcon(self, X, a0, l0):
         """Non-linear constraints required by minimize."""
-        _, a, l = self.geomProp(X)
+        _, a, l = self.geomProp(X[:,None])
         cEx = np.hstack(((a - a0) / a0, (l - l0) / l0))
         return cEx
 
