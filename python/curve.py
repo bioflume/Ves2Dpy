@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.optimize import minimize
-from python.fft1 import fft1
+from fft1 import fft1
 
 
 class Curve:
@@ -57,13 +57,13 @@ class Curve:
         N = X.shape[0] // 2
         modes = np.concatenate((np.arange(0, N // 2), [0], np.arange(-N // 2 + 1, 0)))
         
-        
-        X[:X.shape[0] // 2] -= np.mean(X[:X.shape[0] // 2], axis=0)
-        X[X.shape[0] // 2:] -= np.mean(X[X.shape[0] // 2:], axis=0)
+        tempX = np.zeros_like(X)
+        tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - np.mean(X[:X.shape[0] // 2], axis=0)
+        tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - np.mean(X[X.shape[0] // 2:], axis=0)
 
         for k in range(nv):
-            x = X[:N, k]
-            y = X[N:, k]
+            x = tempX[:N, k]
+            y = tempX[N:, k]
             
             Dx = np.real(np.fft.ifft(1j * modes * np.fft.fft(x)))
             Dy = np.real(np.fft.ifft(1j * modes * np.fft.fft(y)))
@@ -299,7 +299,8 @@ class Curve:
 
         N = X.shape[0] // 2
         nv = X.shape[1]
-        modes = np.concatenate((np.arange(0, N // 2), [0], np.arange(-N // 2 + 1, 0)))
+        # modes = np.concatenate((np.arange(0, N // 2), [0], np.arange(-N // 2 + 1, 0)))
+        modes = np.concatenate((np.arange(0, N // 2), np.arange(-N // 2, 0)))
         jac, _, _ = self.diffProp(X)
         tol = 1e-10
         # u = None
@@ -309,6 +310,7 @@ class Curve:
         for k in range(nv):
             if np.linalg.norm(jac[:, k] - np.mean(jac[:, k]), ord=np.inf) > tol * np.mean(jac[:, k]):
                 theta, _ = self.arcLengthParameter(X[:N, k], X[N:, k])
+                # print(theta)
                 zX = X[:N, k] + 1j * X[N:, k]
                 zXh = np.fft.fft(zX) / N
                 zX = np.zeros(N, dtype=np.complex64)
@@ -354,8 +356,6 @@ class Curve:
         # % put in some overlap to account for periodicity
 
         # Interpolate to obtain equispaced points
-        # print(z1)
-        # print(z2)
         theta = CubicSpline(z1, z2)(np.arange(N) * length / N)
 
         return theta, arc_length
