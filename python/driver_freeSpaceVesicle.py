@@ -19,8 +19,8 @@ def set_bg_flow(bgFlow, speed):
     elif bgFlow == 'parabolic':
         return lambda X: np.vstack((speed * (1 - (X[N:] / 1.3) ** 2), np.zeros_like(X[:N])))  # Parabolic
     elif bgFlow == 'rotation':
-        # 好像少个负号
-        return lambda X: speed * np.vstack((np.sin(np.arctan2(X[N:], X[:N])) / np.sqrt(X[:N:] ** 2 + X[N:] ** 2),
+        # need check
+        return lambda X: speed * np.vstack((-np.sin(np.arctan2(X[N:], X[:N])) / np.sqrt(X[:N:] ** 2 + X[N:] ** 2),
                                     np.cos(np.arctan2(X[N:], X[:N])) / np.sqrt(X[:N] ** 2 + X[N:] ** 2))) 
     else:
         return lambda X: np.zeros_like(X)
@@ -60,8 +60,8 @@ X[N:] = np.sin(IA) * X0[:N] + np.cos(IA) * X0[N:] + center[1]
 # adv_net_output_norm = np.load('./shannets/ves_fft_out_param.npy')
 # relax_net_input_norm = np.load('./shannets/ves_relax_dt1E5.npy')
 # relax_net_output_norm = np.load('./shannets/ves_relax_dt1E5.npy')
-adv_net_input_norm = []
-adv_net_output_norm = []
+adv_net_input_norm = np.load("../ves_adv_trained/ves_fft_in_para.npy")
+adv_net_output_norm = np.load("../ves_adv_trained/ves_fft_out_para.npy")
 relax_net_input_norm = [-2.321531638801999e-12, 0.0626436322927475,
                          -3.3723935102814018e-12, 0.13317303359508514]
 relax_net_output_norm = [-3.548781546403035e-10, 0.06260271370410919,

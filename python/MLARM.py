@@ -3,6 +3,7 @@ import torch
 import sys
 sys.path.append("..")
 from model_zoo.Net_ves_relax_midfat import Net_ves_midfat
+from model_zoo.Net_ves_adv_fft import Net_ves_adv_fft
 
 class MLARM_py:
     def __init__(self, dt, vinf, oc, advNetInputNorm, advNetOutputNorm, relaxNetInputNorm, relaxNetOutputNorm):
@@ -45,21 +46,36 @@ class MLARM_py:
         nv = X.shape[1]
         # % Standardize vesicle (zero center, pi/2 inclination angle, equil dist)
         Xstand, scaling, rotate, trans, sortIdx = self.standardizationStep(X)
-
+        device = torch.device("cpu")
+        Xpredict = torch.zeros(127, nv, 2, 256).to(device)
         # Normalize input
-        input_net = np.zeros((nv, 2, 128))
-        for imode in range(2, 128):
-            x_mean = self.advNetInputNorm[imode - 1][0]
-            x_std = self.advNetInputNorm[imode - 1][1]
-            y_mean = self.advNetInputNorm[imode - 1][2]
-            y_std = self.advNetInputNorm[imode - 1][3]
+        coords = torch.zeros((nv, 2, 128)).to(device)
+        for imode in range(2, 129):
+            x_mean = self.advNetInputNorm[imode - 2][0]
+            x_std = self.advNetInputNorm[imode - 2][1]
+            y_mean = self.advNetInputNorm[imode - 2][2]
+            y_std = self.advNetInputNorm[imode - 2][3]
 
-            input_net[:, 0, :] = (Xstand[:N] - x_mean) / x_std
-            input_net[:, 1, :] = (Xstand[N:] - y_mean) / y_std
+            coords[:, 0, :] = torch.from_numpy((Xstand[:N].T - x_mean) / x_std).float()
+            coords[:, 1, :] = torch.from_numpy((Xstand[N:].T - y_mean) / y_std).float()
 
-        # Predict using neural networks
-        # Adjust this part for Python implementation
-        Xpredict = ...
+            # coords (N,2,128) -> (N,1,256)
+            input_net = torch.concat((coords[:,0], coords[:,1]), dim=1)[:,None,:]
+            # specify which mode, imode=2,3,...,128
+            theta = np.arange(N)/N*2*np.pi
+            theta = theta.reshape(N,1)
+            bases = 1/N*np.exp(1j*theta*np.arange(N).reshape(1,N))
+            rr, ii = np.real(bases[:,imode-1]), np.imag(bases[:,imode-1])
+            basis = torch.from_numpy(np.concatenate((rr,ii))).float().reshape(1,1,256).to(device)
+            # add the channel of fourier basis
+            input_net = torch.concat((input_net, basis.repeat(nv,1,1)), dim=1).to(device)
+
+            # Predict using neural networks
+            model = Net_ves_adv_fft(12,1.7,20)
+            model.load_state_dict(torch.load(f"../ves_adv_trained/ves_fft_mode{imode}.pth", map_location=device))
+            model.eval()
+            with torch.no_grad():
+                Xpredict[imode - 2] = model(input_net)
 
         # % Above line approximates multiplication M*(FFTBasis) 
         # % Now, reconstruct Mvinf = (M*FFTBasis) * vinf_hat
@@ -68,21 +84,23 @@ class MLARM_py:
         Z21 = np.zeros((128, 128))
         Z22 = np.zeros((128, 128))
 
-        for imode in range(2, 128): # the first mode is zero
-            pred = Xpredict[imode - 1]
+        for imode in range(2, 129): # the first mode is zero
+            pred = Xpredict[imode - 2]
 
-            real_mean = self.advNetOutputNorm[imode - 1][0]
-            real_std = self.advNetOutputNorm[imode - 1][1]
-            imag_mean = self.advNetOutputNorm[imode - 1][2]
-            imag_std = self.advNetOutputNorm[imode - 1][3]
+            real_mean = self.advNetOutputNorm[imode - 2][0]
+            real_std = self.advNetOutputNorm[imode - 2][1]
+            imag_mean = self.advNetOutputNorm[imode - 2][2]
+            imag_std = self.advNetOutputNorm[imode - 2][3]
 
-            pred[0, 0, :] = (pred[0, 0, :] * real_std) + real_mean
-            pred[0, 1, :] = (pred[0, 1, :] * imag_std) + imag_mean
+            # % first channel is real
+            pred[:, 0, :] = (pred[:, 0, :] * real_std) + real_mean
+            # % second channel is imaginary
+            pred[:, 1, :] = (pred[:, 1, :] * imag_std) + imag_mean
 
-            Z11[:, imode, 0] = pred[0, 0, :][:N]
-            Z12[:, imode, 0] = pred[0, 1, :][:N] 
-            Z21[:, imode, 0] = pred[0, 0, :][N:]
-            Z22[:, imode, 0] = pred[0, 1, :][N:]
+            Z11[:, imode-1] = pred[0, 0, :][:N]
+            Z12[:, imode-1] = pred[0, 1, :][:N] 
+            Z21[:, imode-1] = pred[0, 0, :][N:]
+            Z22[:, imode-1] = pred[0, 1, :][N:]
 
         # % Take fft of the velocity (should be standardized velocity)
         # % only sort points and rotate to pi/2 (no translation, no scaling)
@@ -95,7 +113,7 @@ class MLARM_py:
         # % Compute the approximate value of the term M*vinf
         MVinf = np.vstack((np.dot(Z11, V1) + np.dot(Z12, V2), np.dot(Z21, V1) + np.dot(Z22, V2)))
         # % update the standardized shape
-        XnewStand = self.dt * vinfStand - self.dt * MVinf
+        XnewStand = self.dt * vinfStand - self.dt * MVinf   
         # % destandardize
         Xadv = self.destandardize(XnewStand, trans, rotate, scaling, sortIdx)
         # % add the initial since solving dX/dt = (I-M)vinf
