@@ -43,6 +43,35 @@ class Curve:
                                 np.mean(X[X.shape[0] // 2:], axis=0) ** 2)
         return center
 
+    def getPhysicalCenter(self, X):
+        """Fin the physical center of each capsule."""
+        nv = X.shape[1]
+        # Compute the differential properties of X
+        jac, tan, curv = self.diffProp(X)
+        # Assign the normal as well
+        nx, ny = tan[tan.shape[0] // 2:,:], -tan[:tan.shape[0] // 2,:] 
+        x, y = X[:X.shape[0] // 2, :], X[X.shape[0] // 2:, :]
+
+        center = np.zeros((2, nv)) 
+        for k in range(nv):        
+            # xdotn = x[:,k] * nx[:,k] + y[:,k] * ny[:, k]
+            # xdotn_sum = np.sum(xdotn * jac[:,k])
+            # # x-component of the center
+            # center[0,k] = np.sum(x[:,k]*xdotn*jac[:,k]) / xdotn_sum
+            # # y-component of the center
+            # center[1,k] = np.sum(y[:,k]*xdotn*jac[:,k]) / xdotn_sum
+
+            xdotn = x[:,k] * nx[:,k]
+            ydotn = y[:,k] * ny[:, k]
+            xdotn_sum = np.sum(xdotn * jac[:,k])
+            ydotn_sum = np.sum(ydotn * jac[:,k])
+            # x-component of the center
+            center[0,k] = 0.5*np.sum(x[:,k]*xdotn*jac[:,k]) / xdotn_sum
+            # y-component of the center
+            center[1,k] = 0.5*np.sum(y[:,k]*ydotn*jac[:,k]) / ydotn_sum
+
+        return center
+
     def getIncAngle2(self, X):
         """Find the inclination angle of each capsule.
         % GK: THIS IS NEEDED IN STANDARDIZING VESICLE SHAPES 
@@ -339,8 +368,8 @@ class Curve:
         N = len(x)
         t = np.arange(N) * 2 * np.pi / N
         _, _, length = o.geomProp(np.concatenate((x, y))[:,None])
-
         # Find total perimeter
+        
         Dx, Dy = o.getDXY(np.concatenate((x, y))[:,None])
         # Find derivative
         arc = np.sqrt(Dx**2 + Dy**2)
@@ -356,6 +385,10 @@ class Curve:
         # % put in some overlap to account for periodicity
 
         # Interpolate to obtain equispaced points
+        dx = np.diff(z1)
+        if np.any(dx <= 0):
+            print(dx)
+            print("haha")
         theta = CubicSpline(z1, z2)(np.arange(N) * length / N)
 
         return theta, arc_length
