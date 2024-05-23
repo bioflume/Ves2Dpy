@@ -42,6 +42,26 @@ class Curve:
         center = np.sqrt(np.mean(X[:X.shape[0] // 2], axis=0) ** 2 +
                                 np.mean(X[X.shape[0] // 2:], axis=0) ** 2)
         return center
+    
+    def getPhysicalCenter(self, X):
+        """Fin the physical center of each capsule."""
+        nv = X.shape[1]
+        # Compute the differential properties of X
+        jac, tan, curv = self.diffProp(X)
+        # Assign the normal as well
+        nx, ny = tan[tan.shape[0] // 2:,:], -tan[:tan.shape[0] // 2,:] 
+        x, y = X[:X.shape[0] // 2, :], X[X.shape[0] // 2:, :]
+        
+        center = np.zeros((2, nv)) 
+        for k in range(nv):        
+            xdotn = x[:,k] * nx[:,k] + y[:,k] * ny[:, k]
+            xdotn_sum = np.sum(xdotn * jac[:,k])
+            # x-component of the center
+            center[0,k] = np.sum(x[:,k]*xdotn*jac[:,k]) / xdotn_sum
+            # y-component of the center
+            center[1,k] = np.sum(y[:,k]*xdotn*jac[:,k]) / xdotn_sum
+        
+        return center
 
     def getIncAngle2(self, X):
         """Find the inclination angle of each capsule.
