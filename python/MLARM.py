@@ -209,7 +209,7 @@ class MLARM_py:
         tempX = Xref[:]
 
         translation = [-np.mean(Xref[:N]), -np.mean(Xref[N:])]
-        rotation = np.pi / 2 - oc.getIncAngle2(tempX)
+        rotation = np.pi / 2 - oc.getIncAngle(tempX)
         _, _, length = oc.geomProp(tempX)
         scaling = 1 / length
         

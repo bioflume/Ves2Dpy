@@ -51,36 +51,9 @@ class Curve:
         # Assign the normal as well
         nx, ny = tan[tan.shape[0] // 2:,:], -tan[:tan.shape[0] // 2,:] 
         x, y = X[:X.shape[0] // 2, :], X[X.shape[0] // 2:, :]
-        
-        center = np.zeros((2, nv)) 
-        for k in range(nv):        
-            xdotn = x[:,k] * nx[:,k] + y[:,k] * ny[:, k]
-            xdotn_sum = np.sum(xdotn * jac[:,k])
-            # x-component of the center
-            center[0,k] = np.sum(x[:,k]*xdotn*jac[:,k]) / xdotn_sum
-            # y-component of the center
-            center[1,k] = np.sum(y[:,k]*xdotn*jac[:,k]) / xdotn_sum
-        
-        return center
-
-    def getPhysicalCenter(self, X):
-        """Fin the physical center of each capsule."""
-        nv = X.shape[1]
-        # Compute the differential properties of X
-        jac, tan, curv = self.diffProp(X)
-        # Assign the normal as well
-        nx, ny = tan[tan.shape[0] // 2:,:], -tan[:tan.shape[0] // 2,:] 
-        x, y = X[:X.shape[0] // 2, :], X[X.shape[0] // 2:, :]
 
         center = np.zeros((2, nv)) 
         for k in range(nv):        
-            # xdotn = x[:,k] * nx[:,k] + y[:,k] * ny[:, k]
-            # xdotn_sum = np.sum(xdotn * jac[:,k])
-            # # x-component of the center
-            # center[0,k] = np.sum(x[:,k]*xdotn*jac[:,k]) / xdotn_sum
-            # # y-component of the center
-            # center[1,k] = np.sum(y[:,k]*xdotn*jac[:,k]) / xdotn_sum
-
             xdotn = x[:,k] * nx[:,k]
             ydotn = y[:,k] * ny[:, k]
             xdotn_sum = np.sum(xdotn * jac[:,k])
@@ -92,7 +65,7 @@ class Curve:
 
         return center
 
-    def getIncAngle2(self, X):
+    def getIncAngle(self, X):
         """Find the inclination angle of each capsule.
         % GK: THIS IS NEEDED IN STANDARDIZING VESICLE SHAPES 
         % WE NEED TO KNOW THE INCLINATION ANGLE AND ROTATE THE VESICLE TO pi/2
@@ -139,31 +112,6 @@ class Curve:
             # % since V(2,ind) > 0, this will give angle between [0, pi]
             IA[k] = np.arctan2(V[1, ind], V[0, ind])
 
-            # % FIND DIRECTION OF PRIN. AXIS DEPENDING ON HEAD-TAIL
-            # % 1) already translated to (0,0), so rotate to pi/2
-            x0rot = x * np.cos(-IA[k] + np.pi / 2) - y * np.sin(-IA[k] + np.pi / 2)
-            y0rot = x * np.sin(-IA[k] + np.pi / 2) + y * np.cos(-IA[k] + np.pi / 2)
-            
-            # % 2) find areas (top, bottom)
-            # % need derivatives, so rotate the computed ones
-            Dx = Dx * np.cos(-IA[k] + np.pi / 2) - Dy * np.sin(-IA[k] + np.pi / 2)
-            Dy = Dx * np.sin(-IA[k] + np.pi / 2) + Dy * np.cos(-IA[k] + np.pi / 2)
-
-            idcsTop = np.where(y0rot >= 0)[0]
-            idcsBot = np.where(y0rot < 0)[0]
-            areaTop = np.sum(x0rot[idcsTop] * Dy[idcsTop] - y0rot[idcsTop] * Dx[idcsTop]) / N * np.pi
-            areaBot = np.sum(x0rot[idcsBot] * Dy[idcsBot] - y0rot[idcsBot] * Dx[idcsBot]) / N * np.pi
-
-            if areaBot >= 1.1 * areaTop:
-                IA[k] += np.pi
-            elif areaTop < 1.1 * areaBot:
-                # % if areaTop ~ areaBot, then check areaRight, areaLeft  
-                idcsLeft = np.where(x0rot < 0)[0]
-                idcsRight = np.where(x0rot >= 0)[0]
-                areaRight = np.sum(x0rot[idcsRight] * Dy[idcsRight] - y0rot[idcsRight] * Dx[idcsRight]) / N * np.pi
-                areaLeft = np.sum(x0rot[idcsLeft] * Dy[idcsLeft] - y0rot[idcsLeft] * Dx[idcsLeft]) / N * np.pi
-                if areaLeft >= 1.1 * areaRight:
-                    IA[k] += np.pi
         return IA
 
     def getDXY(self, X):
@@ -315,8 +263,8 @@ class Curve:
             initMean = np.array([np.mean(Xorg[:Xorg.shape[0] // 2, k]), np.mean(Xorg[Xorg.shape[0] // 2:, k])])
             newMean = np.array([np.mean(X[:X.shape[0] // 2, k]), np.mean(X[X.shape[0] // 2:, k])])
 
-            initAngle = self.getIncAngle2(Xorg[:, [k]])
-            newAngle = self.getIncAngle2(X[:, [k]])
+            initAngle = self.getIncAngle(Xorg[:, [k]])
+            newAngle = self.getIncAngle(X[:, [k]])
 
             if newAngle > np.pi:
                 newAngle2 = newAngle - np.pi
