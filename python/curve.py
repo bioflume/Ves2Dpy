@@ -113,7 +113,50 @@ class Curve:
             IA[k] = np.arctan2(V[1, ind], V[0, ind])
 
         return IA
+    def getPrincAxesGivenCentroid(self, X, center):
+        """Find the principal axes given centroid.
+        % GK: THIS IS NEEDED IN STANDARDIZING VESICLE SHAPES 
+        """
+        nv = X.shape[1]
+        # % compute inclination angle on an upsampled grid
+        N = X.shape[0] // 2
+        modes = np.concatenate((np.arange(0, N // 2), [0], np.arange(-N // 2 + 1, 0)))
+        
+        tempX = np.zeros_like(X)
+        tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - np.mean(X[:X.shape[0] // 2], axis=0)
+        tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - np.mean(X[X.shape[0] // 2:], axis=0)
 
+        for k in range(nv):
+            x = tempX[:N, k]
+            y = tempX[N:, k]
+            
+            x -= center[0]
+            y -= center[1]
+            
+            Dx = np.real(np.fft.ifft(1j * modes * np.fft.fft(x)))
+            Dy = np.real(np.fft.ifft(1j * modes * np.fft.fft(y)))
+            jac = np.sqrt(Dx ** 2 + Dy ** 2)
+            tx = Dx / jac
+            ty = Dy / jac
+            nx = ty
+            ny = -tx #Shan: n is the right hand side of t
+            rdotn = x * nx + y * ny
+            rho2 = x ** 2 + y ** 2
+
+            J11 = 0.25 * np.sum(rdotn * (rho2 - x * x) * jac) * 2 * np.pi / N
+            J12 = 0.25 * np.sum(rdotn * (-x * y) * jac) * 2 * np.pi / N
+            J21 = 0.25 * np.sum(rdotn * (-y * x) * jac) * 2 * np.pi / N
+            J22 = 0.25 * np.sum(rdotn * (rho2 - y * y) * jac) * 2 * np.pi / N
+
+            J = np.array([[J11, J12], [J21, J22]])
+            # Shan
+            D, V = np.linalg.eig(J)
+            ind = np.argmin(np.abs((D)))
+            # % make sure that the first components of e-vectors have the same sign
+            V = V[:,ind]
+            
+        return V
+    
     def getDXY(self, X):
         """Compute the derivatives of each component of X."""
         # % [Dx,Dy]=getDXY(X), compute the derivatives of each component of X 

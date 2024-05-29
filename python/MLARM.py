@@ -170,8 +170,6 @@ class MLARM_py:
         # % Equally distribute points in arc-length
         for w in range(5):
             X, _, _ = oc.redistributeArcLength(X)
-        # % Fix misalignment in center and angle due to reparametrization
-        X = oc.alignCenterAngle(Xin, X)
         # % standardize angle, center, scaling and point order
         trans, rotate, scaling, sortIdx = self.referenceValues(X)
         
@@ -208,12 +206,24 @@ class MLARM_py:
         tempX = np.zeros_like(Xref)
         tempX = Xref[:]
 
-        translation = [-np.mean(Xref[:N]), -np.mean(Xref[N:])]
-        rotation = np.pi / 2 - oc.getIncAngle(tempX)
+        # Find the physical center
+        center = oc.getPhysicalCenter(tempX)
+        V = oc.getPrincAxesGivenCentroid(tempX,center)
+        w = np.array([0, 1]) # y-axis unit vector
+        rotation = np.arctan2(w[1]*V[0]-w[0]*V[1], w[0]*V[0]+w[1]*V[1])
+        
+        #translation = [-np.mean(Xref[:N]), -np.mean(Xref[N:])]
+        #rotation = np.pi / 2 - oc.getIncAngle(tempX)
+        Xref = self.rotationOperator(tempX, rotation)
+        center = oc.getPhysicalCenter(Xref)
+        translation = -center
+        
         _, _, length = oc.geomProp(tempX)
         scaling = 1 / length
         
-        tempX = scaling * self.rotationOperator(self.translateOp(tempX, translation), rotation)
+        tempX = scaling*self.translateOp(Xref, translation)
+        
+        #tempX = scaling * self.rotationOperator(self.translateOp(tempX, translation), rotation)
         
         firstQuad = np.intersect1d(np.where(tempX[:N] >= 0)[0], np.where(tempX[N:] >= 0)[0])
         theta = np.arctan2(tempX[N:], tempX[:N])
@@ -227,8 +237,8 @@ class MLARM_py:
         x = X[:len(X) // 2]
         y = X[len(X) // 2:]
 
-        xrot = x * np.cos(theta) - y * np.sin(theta)
-        yrot = x * np.sin(theta) + y * np.cos(theta)
+        xrot = (x-np.mean(x)) * np.cos(theta) - (y-np.mean(y)) * np.sin(theta) + np.mean(x)
+        yrot = (x-np.mean(x)) * np.sin(theta) + (y-np.mean(y)) * np.cos(theta) + np.mean(y)
 
         Xrot[:len(X) // 2] = xrot
         Xrot[len(X) // 2:] = yrot
