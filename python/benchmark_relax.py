@@ -21,10 +21,14 @@ Th = 1000*dt
 N = 128  # Number of points to discretize vesicle
 
 # Vesicle initialization
+#init_data = loadmat("initShapes.mat") ### INIT SHAPES FROM THE DATA SET
+#Xics = init_data.get('Xics')
+#X0 = Xics[:,0]
+
 nv = 1  # Number of vesicles
-init_data = loadmat("initShapes.mat") ### INIT SHAPES FROM THE DATA SET
-Xics = init_data.get('Xics')
-X0 = Xics[:,0]
+ra = 0.65  # Reduced area -- networks trained with vesicles of ra = 0.65
+X0 = oc.ellipse(N, ra)  # Initial vesicle as ellipsoid
+# X0.shape: (256,1)
 
 center = np.array([0, 0.065])  # Center in [x, y]
 IA = np.pi / 2  # Inclination angle
