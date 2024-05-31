@@ -178,8 +178,10 @@ class MLARM_py:
 
     def standardize(self, X, translation, rotation, scaling, sortIdx):
         N = len(sortIdx)
-        Xrotated = scaling * self.rotationOperator(self.translateOp(X, translation), rotation)
+        Xrotated = self.rotationOperator(X, rotation)
+        Xrotated = self.translateOp(Xrotated, translation)
         XrotSort = np.concatenate((Xrotated[sortIdx], Xrotated[sortIdx + N]))
+        XrotSort = scaling*XrotSort
         return XrotSort
 
     def destandardize(self, XrotSort, translation, rotation, scaling, sortIdx):
@@ -189,14 +191,13 @@ class MLARM_py:
         X[sortIdx + N] = XrotSort[N:]
 
         X = X / scaling
-
+        X = self.translateOp(X, -1*np.array(translation))
+        
         cx = np.mean(X[:N])
         cy = np.mean(X[N:])
         
         X = self.rotationOperator(np.concatenate([X[:N] - cx, X[N:] - cy]), -rotation)
         X = np.concatenate([X[:N] + cx, X[N:] + cy])
-
-        X = self.translateOp(X, -1*np.array(translation))
 
         return X
 
