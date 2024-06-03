@@ -34,11 +34,6 @@ class Curve:
 
     def getCenter(self, X):
         """Find the center of each capsule."""
-        # nv = X.shape[1]
-        # center = np.zeros(nv)
-        # for k in range(nv):
-        #     center[k] = np.sqrt(np.mean(X[:X.shape[0] // 2, k]) ** 2 +
-        #                         np.mean(X[X.shape[0] // 2:, k]) ** 2)
         center = np.sqrt(np.mean(X[:X.shape[0] // 2], axis=0) ** 2 +
                                 np.mean(X[X.shape[0] // 2:], axis=0) ** 2)
         return center
@@ -51,19 +46,18 @@ class Curve:
         # Assign the normal as well
         nx, ny = tan[tan.shape[0] // 2:,:], -tan[:tan.shape[0] // 2,:] 
         x, y = X[:X.shape[0] // 2, :], X[X.shape[0] // 2:, :]
+      
+        center = np.zeros((2, nv))
+        xdotn = x * nx
+        ydotn = y*  ny
+        xdotn_sum = np.sum(xdotn * jac, axis=0)
+        ydotn_sum = np.sum(ydotn * jac, axis=0)
+        # x-component of the center
+        center[0] = 0.5 * np.sum(x * xdotn * jac, axis=0) / xdotn_sum
+        # y-component of the center
+        center[1] = 0.5 * np.sum(y * ydotn * jac, axis=0) / ydotn_sum
 
-        center = np.zeros((2, nv)) 
-        for k in range(nv):        
-            xdotn = x[:,k] * nx[:,k]
-            ydotn = y[:,k] * ny[:, k]
-            xdotn_sum = np.sum(xdotn * jac[:,k])
-            ydotn_sum = np.sum(ydotn * jac[:,k])
-            # x-component of the center
-            center[0,k] = 0.5*np.sum(x[:,k]*xdotn*jac[:,k]) / xdotn_sum
-            # y-component of the center
-            center[1,k] = 0.5*np.sum(y[:,k]*ydotn*jac[:,k]) / ydotn_sum
-
-        return center
+        return center 
 
     def getIncAngle(self, X):
         """Find the inclination angle of each capsule.
