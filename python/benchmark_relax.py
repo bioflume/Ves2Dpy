@@ -44,10 +44,10 @@ X[N:] = np.sin(IA) * X0[:N] + np.cos(IA) * X0[N:] + center[1]
 # relax_net_output_norm = np.load('./shannets/ves_relax_dt1E5.npy')
 adv_net_input_norm = np.load("../ves_adv_trained/ves_fft_in_para.npy")
 adv_net_output_norm = np.load("../ves_adv_trained/ves_fft_out_para.npy")
-relax_net_input_norm = [-2.321531638801999e-12, 0.0626436322927475,
-                         -3.3723935102814018e-12, 0.13317303359508514]
-relax_net_output_norm = [-3.548781546403035e-10, 0.06260271370410919,
-                          -6.015386522228994e-10, 0.13323774933815002]
+relax_net_input_norm = [-8.430413700466488e-09, 0.06278684735298157,
+                         6.290720477863943e-08, 0.13339413702487946]
+relax_net_output_norm = [-2.884585348361668e-10, 0.00020574081281665713,
+                          -5.137390512999218e-10, 0.0001763451291481033]
 
 mlarm = MLARM_py(dt, vinf, oc, adv_net_input_norm, adv_net_output_norm,
                  relax_net_input_norm, relax_net_output_norm)

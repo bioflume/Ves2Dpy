@@ -5,6 +5,7 @@ sys.path.append("..")
 from model_zoo.Net_ves_relax_midfat import Net_ves_midfat
 from model_zoo.Net_ves_adv_fft import Net_ves_adv_fft
 from model_zoo.Net_ves_merge_adv import Net_merge_advection
+from model_zoo.Net_ves_factor import pdeNet_Ves_factor_periodic
 
 class MLARM_py:
     def __init__(self, dt, vinf, oc, advNetInputNorm, advNetOutputNorm, relaxNetInputNorm, relaxNetOutputNorm):
@@ -47,7 +48,7 @@ class MLARM_py:
         N = X.shape[0]//2
         nv = X.shape[1]
         # % Standardize vesicle (zero center, pi/2 inclination angle, equil dist)
-        Xstand, scaling, rotate, trans, sortIdx = self.standardizationStep(X)
+        Xstand, scaling, rotate, rotCenter, trans, sortIdx = self.standardizationStep(X)
         device = torch.device("cpu")
         Xpredict = torch.zeros(127, nv, 2, 256).to(device)
         # Normalize input
@@ -106,7 +107,7 @@ class MLARM_py:
 
         # % Take fft of the velocity (should be standardized velocity)
         # % only sort points and rotate to pi/2 (no translation, no scaling)
-        vinfStand = self.standardize(vback, [0, 0], rotate, 1, sortIdx)
+        vinfStand = self.standardize(vback, [0, 0], rotate, rotCenter, 1, sortIdx)
         z = vinfStand[:N] + 1j * vinfStand[N:]
 
         zh = np.fft.fft(z)
@@ -117,7 +118,7 @@ class MLARM_py:
         # % update the standardized shape
         XnewStand = self.dt * vinfStand - self.dt * MVinf   
         # % destandardize
-        Xadv = self.destandardize(XnewStand, trans, rotate, scaling, sortIdx)
+        Xadv = self.destandardize(XnewStand, trans, rotate, rotCenter, scaling, sortIdx)
         # % add the initial since solving dX/dt = (I-M)vinf
         Xadv = X + Xadv
 
@@ -128,7 +129,7 @@ class MLARM_py:
             N = X.shape[0]//2
             nv = X.shape[1]
             # % Standardize vesicle (zero center, pi/2 inclination angle, equil dist)
-            Xstand, scaling, rotate, trans, sortIdx = self.standardizationStep(X)
+            Xstand, scaling, rotate, rotCenter, trans, sortIdx = self.standardizationStep(X)
             device = torch.device("cpu")
             Xpredict = torch.zeros(127, nv, 2, 256).to(device)
             # prepare fourier basis
@@ -219,7 +220,7 @@ class MLARM_py:
 
             # % Take fft of the velocity (should be standardized velocity)
             # % only sort points and rotate to pi/2 (no translation, no scaling)
-            vinfStand = self.standardize(vback, [0, 0], rotate, 1, sortIdx)
+            vinfStand = self.standardize(vback, [0, 0], rotate, rotCenter, 1, sortIdx)
             z = vinfStand[:N] + 1j * vinfStand[N:]
 
             zh = np.fft.fft(z)
@@ -230,7 +231,7 @@ class MLARM_py:
             # % update the standardized shape
             XnewStand = self.dt * vinfStand - self.dt * MVinf   
             # % destandardize
-            Xadv = self.destandardize(XnewStand, trans, rotate, scaling, sortIdx)
+            Xadv = self.destandardize(XnewStand, trans, rotate, rotCenter, scaling, sortIdx)
             # % add the initial since solving dX/dt = (I-M)vinf
             Xadv = X + Xadv
 
@@ -241,13 +242,14 @@ class MLARM_py:
         N = X.shape[0]//2
 
         # % Standardize vesicle
-        Xin, scaling, rotate, trans, sortIdx = self.standardizationStep(X)
+        Xin, scaling, rotate, rotCenter, trans, sortIdx = self.standardizationStep(X)
         # % Normalize input
         x_mean = self.relaxNetInputNorm[0]
         x_std = self.relaxNetInputNorm[1]
         y_mean = self.relaxNetInputNorm[2]
         y_std = self.relaxNetInputNorm[3]
-
+        
+        Xstand = np.copy(Xin)
         Xin[:N] = (Xin[:N] - x_mean) / x_std
         Xin[N:] = (Xin[N:] - y_mean) / y_std
 
@@ -258,15 +260,15 @@ class MLARM_py:
 
         # Make prediction -- needs to be adjusted for python
         device = torch.device("cpu")
-        model = Net_ves_midfat(num_blocks=16)
-        model.load_state_dict(torch.load("../ves_relax619k_mirr_dt1e-5.pth", map_location=device))
+        model = pdeNet_Ves_factor_periodic(14, 2.9)
+        model.load_state_dict(torch.load("../ves_relax_DIFF_June8_625k_dt1e-5.pth", map_location=device))
         model.eval()
         with torch.no_grad():
-            XpredictStand = model(XinitConv)
+            DXpredictStand = model(XinitConv)
 
         # Denormalize output
-        Xpred = np.zeros_like(Xin)
-        XpredictStand = XpredictStand.numpy()
+        DXpred = np.zeros_like(Xin)
+        DXpredictStand = DXpredictStand.numpy()
 
         out_x_mean = self.relaxNetOutputNorm[0]
         out_x_std = self.relaxNetOutputNorm[1]
@@ -274,10 +276,12 @@ class MLARM_py:
         out_y_std = self.relaxNetOutputNorm[3]
 
         # nv=1 case
-        Xpred[:N,0] = XpredictStand[0, 0, :] * out_x_std + out_x_mean
-        Xpred[N:,0] = XpredictStand[0, 1, :] * out_y_std + out_y_mean
+        DXpred[:N,0] = DXpredictStand[0, 0, :] * out_x_std + out_x_mean
+        DXpred[N:,0] = DXpredictStand[0, 1, :] * out_y_std + out_y_mean
 
-        Xnew = self.destandardize(Xpred, trans, rotate, scaling, sortIdx)
+        # Difference between two time steps predicted, update the configuration
+        Xpred = Xstand + DXpred
+        Xnew = self.destandardize(Xpred, trans, rotate, rotCenter, scaling, sortIdx)
         return Xnew
 
     def standardizationStep(self, Xin):
@@ -287,33 +291,31 @@ class MLARM_py:
         for w in range(5):
             X, _, _ = oc.redistributeArcLength(X)
         # % standardize angle, center, scaling and point order
-        trans, rotate, scaling, sortIdx = self.referenceValues(X)
+        trans, rotate, rotCenter, scaling, sortIdx = self.referenceValues(X)
         
-        X = self.standardize(X, trans, rotate, scaling, sortIdx)
-        return X, scaling, rotate, trans, sortIdx
+        X = self.standardize(X, trans, rotate, rotCenter, scaling, sortIdx)
+        return X, scaling, rotate, rotCenter, trans, sortIdx
 
-    def standardize(self, X, translation, rotation, scaling, sortIdx):
+    def standardize(self, X, translation, rotation, rotCenter, scaling, sortIdx):
         N = len(sortIdx)
-        Xrotated = self.rotationOperator(X, rotation)
+        Xrotated = self.rotationOperator(X, rotation, rotCenter)
         Xrotated = self.translateOp(Xrotated, translation)
         XrotSort = np.concatenate((Xrotated[sortIdx], Xrotated[sortIdx + N]))
         XrotSort = scaling*XrotSort
         return XrotSort
 
-    def destandardize(self, XrotSort, translation, rotation, scaling, sortIdx):
+    def destandardize(self, XrotSort, translation, rotation, rotCenter, scaling, sortIdx):
         N = len(sortIdx)
+        
+        XrotSort = XrotSort / scaling
+        
         X = np.zeros_like(XrotSort)
         X[sortIdx] = XrotSort[:N]
         X[sortIdx + N] = XrotSort[N:]
-
-        X = X / scaling
+        
         X = self.translateOp(X, -1*np.array(translation))
         
-        cx = np.mean(X[:N])
-        cy = np.mean(X[N:])
-        
-        X = self.rotationOperator(np.concatenate([X[:N] - cx, X[N:] - cy]), -rotation)
-        X = np.concatenate([X[:N] + cx, X[N:] + cy])
+        X = self.rotationOperator(X, -rotation, rotCenter)
 
         return X
 
@@ -329,33 +331,30 @@ class MLARM_py:
         w = np.array([0, 1]) # y-axis unit vector
         rotation = np.arctan2(w[1]*V[0]-w[0]*V[1], w[0]*V[0]+w[1]*V[1])
         
-        #translation = [-np.mean(Xref[:N]), -np.mean(Xref[N:])]
-        #rotation = np.pi / 2 - oc.getIncAngle(tempX)
-        Xref = self.rotationOperator(tempX, rotation)
+        rotCenter = center # the point around which the frame is rotated
+        Xref = self.rotationOperator(tempX, rotation, rotCenter)
         center = oc.getPhysicalCenter(Xref)
         translation = -center
         
-        _, _, length = oc.geomProp(tempX)
-        scaling = 1 / length
+        Xref = self.translateOp(Xref, translation)
         
-        tempX = scaling*self.translateOp(Xref, translation)
-        
-        #tempX = scaling * self.rotationOperator(self.translateOp(tempX, translation), rotation)
-        
-        firstQuad = np.intersect1d(np.where(tempX[:N] >= 0)[0], np.where(tempX[N:] >= 0)[0])
-        theta = np.arctan2(tempX[N:], tempX[:N])
+        firstQuad = np.intersect1d(np.where(Xref[:N] >= 0)[0], np.where(Xref[N:] >= 0)[0])
+        theta = np.arctan2(Xref[N:], Xref[:N])
         idx = np.argmin(theta[firstQuad])
         sortIdx = np.concatenate((np.arange(firstQuad[idx],N), np.arange(0, firstQuad[idx])))
+        
+        _, _, length = oc.geomProp(Xref)
+        scaling = 1 / length
+        
+        return translation, rotation, rotCenter, scaling, sortIdx
 
-        return translation, rotation, scaling, sortIdx
-
-    def rotationOperator(self, X, theta):
+    def rotationOperator(self, X, rotCenter, theta):
         Xrot = np.zeros_like(X)
         x = X[:len(X) // 2]
         y = X[len(X) // 2:]
 
-        xrot = (x-np.mean(x)) * np.cos(theta) - (y-np.mean(y)) * np.sin(theta) + np.mean(x)
-        yrot = (x-np.mean(x)) * np.sin(theta) + (y-np.mean(y)) * np.cos(theta) + np.mean(y)
+        xrot = (x-rotCenter[0]) * np.cos(theta) - (y-rotCenter[1]) * np.sin(theta) + rotCenter[0]
+        yrot = (x-rotCenter[0]) * np.sin(theta) + (y-rotCenter[1]) * np.cos(theta) + rotCenter[1]
 
         Xrot[:len(X) // 2] = xrot
         Xrot[len(X) // 2:] = yrot
