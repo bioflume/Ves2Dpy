@@ -107,7 +107,7 @@ class MLARM_py:
 
         # % Take fft of the velocity (should be standardized velocity)
         # % only sort points and rotate to pi/2 (no translation, no scaling)
-        vinfStand = self.standardize(vback, [0, 0], rotate, rotCenter, 1, sortIdx)
+        vinfStand = self.standardize(vback, [0, 0], rotate, [0, 0], 1, sortIdx)
         z = vinfStand[:N] + 1j * vinfStand[N:]
 
         zh = np.fft.fft(z)
@@ -220,7 +220,7 @@ class MLARM_py:
 
             # % Take fft of the velocity (should be standardized velocity)
             # % only sort points and rotate to pi/2 (no translation, no scaling)
-            vinfStand = self.standardize(vback, [0, 0], rotate, rotCenter, 1, sortIdx)
+            vinfStand = self.standardize(vback, [0, 0], rotate, [0, 0], 1, sortIdx)
             z = vinfStand[:N] + 1j * vinfStand[N:]
 
             zh = np.fft.fft(z)
