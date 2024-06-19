@@ -120,12 +120,13 @@ class Curve:
         tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - np.mean(X[:X.shape[0] // 2], axis=0)
         tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - np.mean(X[X.shape[0] // 2:], axis=0)
 
+        multiple_V = np.zeros((2,nv))
         for k in range(nv):
             x = tempX[:N, k]
             y = tempX[N:, k]
             
-            x -= center[0]
-            y -= center[1]
+            x -= center[0,k]
+            y -= center[1,k]
             
             Dx = np.real(np.fft.ifft(1j * modes * np.fft.fft(x)))
             Dy = np.real(np.fft.ifft(1j * modes * np.fft.fft(y)))
@@ -147,9 +148,9 @@ class Curve:
             D, V = np.linalg.eig(J)
             ind = np.argmin(np.abs((D)))
             # % make sure that the first components of e-vectors have the same sign
-            V = V[:,ind]
+            multiple_V[:,k] = V[:,ind]
             
-        return V
+        return multiple_V
     
     def getDXY(self, X):
         """Compute the derivatives of each component of X."""
