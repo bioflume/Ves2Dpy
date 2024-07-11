@@ -142,6 +142,12 @@ classdef MLARM_py
   % Make prediction -- needs to be adjusted for python
   [XpredictStand] = pyrunfile("relax_predict_dt1E5_pro.py", "predicted_shape", input_shape=XinitConv);
   
+   % Normalize output
+  x_mean = o.relaxNetOutputNorm(1);
+  x_std = o.relaxNetOutputNorm(2);
+  y_mean = o.relaxNetOutputNorm(3);
+  y_std = o.relaxNetOutputNorm(4);
+
   % Denormalize output
   Xpred = zeros(size(Xin));
   XpredictStand = double(XpredictStand);
