@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d
-from python.curve import Curve
-from python.fft1 import fft1
+from mypython.curve import Curve
+from mypython.fft1 import fft1
 
 class capsules:
     """

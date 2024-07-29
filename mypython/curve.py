@@ -39,7 +39,9 @@ class Curve:
         return center
     
     def getPhysicalCenter(self, X):
-        """Fin the physical center of each capsule."""
+        """Fin the physical center of each capsule. Compatible with multi ves.
+        returns center in shape (2, nv)
+        """
         nv = X.shape[1]
         # Compute the differential properties of X
         jac, tan, curv = self.diffProp(X)

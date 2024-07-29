@@ -2,6 +2,7 @@ import numpy as np
 from curve import Curve
 from MLARM import MLARM_py
 import time
+from scipy.io import loadmat
 
 # Load curve_py
 oc = Curve()
@@ -33,16 +34,23 @@ vinf = set_bg_flow(bgFlow, speed)
 # Time stepping
 dt = 1e-5  # Time step size
 # Th = 0.15  # Time horizon
-Th = 2*dt
+Th = 3*dt
 
 # Vesicle discretization
 N = 128  # Number of points to discretize vesicle
 
 # Vesicle initialization
-nv = 1  # Number of vesicles
-ra = 0.65  # Reduced area -- networks trained with vesicles of ra = 0.65
-X0 = oc.ellipse(N, ra)  # Initial vesicle as ellipsoid
+# nv = 3  # Number of vesicles
+# ra = 0.65  # Reduced area -- networks trained with vesicles of ra = 0.65
+# X0 = oc.ellipse(N, ra)  # Initial vesicle as ellipsoid
+# X0 = np.repeat(X0,3,axis=-1)
 # X0.shape: (256,1)
+
+init_data = loadmat("../initShapes.mat") ### INIT SHAPES FROM THE DATA SET
+Xics = init_data.get('Xics')
+X0 = Xics[:,0:3]
+# X0 = Xics[:,[1]]
+nv = X0.shape[1]
 
 # Arc-length is supposed to be 1 so divide by the initial length
 area0, len0 = oc.geomProp(X0)[1:]
@@ -82,6 +90,7 @@ with open(fileName, 'wb') as fid:
 # Evolve in time
 currtime = 0
 it = 0
+
 while currtime < Th:
     # Take a time step
     tStart = time.time()
@@ -108,3 +117,6 @@ while currtime < Th:
     output = np.concatenate(([currtime], X.flatten())).astype('float64')
     with open(fileName, 'ab') as fid:
         output.tofile(fid)
+
+# np.save("X_final_multi.npy", X)
+# np.save("X_final1.npy", X)
