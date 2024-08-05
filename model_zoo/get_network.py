@@ -5,6 +5,7 @@ from model_zoo.Net_ves_adv_fft import Net_ves_adv_fft
 from model_zoo.Net_ves_merge_adv import Net_merge_advection
 from model_zoo.Net_ves_factor import pdeNet_Ves_factor_periodic
 from model_zoo.Net_ves_selften import Net_ves_selften
+from model_zoo.Net_ves_merge_advten import Net_ves_merge_advten
 
 class RelaxNetwork:
     '''
@@ -12,16 +13,17 @@ class RelaxNetwork:
     Output size (nv, 2, 128), 2 channels for delta_x and delta_y coords, N is dataset size
     Note that the network predicts differences.
     '''
-    def __init__(self, input_param, out_param, model_path, device):
+    def __init__(self, dt, input_param, out_param, model_path, device):
+        self.dt = dt
         self.input_param = input_param # contains 4 numbers
         self.out_param = out_param # contains 4 numbers
         # self.model_path = model_path
         self.device = device
-        self.model = self.loadModel(model_path, device)
+        self.model = self.loadModel(model_path)
     
-    def loadModel(self, model_path, device):
-        model = pdeNet_Ves_factor_periodic(14, 3.1)
-        model.load_state_dict(torch.load(model_path, map_location=device))
+    def loadModel(self, model_path):
+        model = pdeNet_Ves_factor_periodic(14, 2.9)
+        model.load_state_dict(torch.load(model_path, map_location=self.device))
         model.eval()
         return model
     
@@ -42,7 +44,7 @@ class RelaxNetwork:
         XinitShape = np.zeros((nv, 2, 128))
         XinitShape[:, 0, :] = Xin[:N].T
         XinitShape[:, 1, :] = Xin[N:].T
-        XinitConv = torch.tensor(XinitShape).float()
+        XinitConv = torch.from_numpy(XinitShape).float()
         return XinitConv
     
     def postProcess(self, DXpred):
@@ -80,11 +82,10 @@ class MergedAdvNetwork:
         self.input_param = input_param # of shape (127, 4)
         self.out_param = out_param # of shape (127, 4)
         # self.model_path = model_path
-        self.model = self.loadModel(model_path, device)
         self.device = device
-    
-    def loadModel(self):
-        device = self.device
+        self.model = self.loadModel(model_path)
+        
+    def loadModel(self, path):
         s = 2
         t = 128
         rep = t - s + 1 # number of repetitions
@@ -93,8 +94,8 @@ class MergedAdvNetwork:
         dicts = []
         # models = []
         for l in range(s, t+1):
-            path = "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/ves_adv_trained/ves_fft_mode"+str(l)+".pth"
-            dicts.append(torch.load(path, map_location=device))
+            model_path = path + "/ves_fft_mode"+str(l)+".pth"
+            dicts.append(torch.load(model_path, map_location = self.device))
             # subnet = Net_ves_adv_fft(12, 1.7, 20)
             # subnet.load_state_dict(dicts[-1])
             # models.append(subnet.to(device))
@@ -112,7 +113,8 @@ class MergedAdvNetwork:
             new_weights[key] = torch.concat(tuple(params),dim=0)
         model.load_state_dict(new_weights, strict=True)
         model.eval()
-        model.to(device)
+        model.to(self.device)
+        return model
     
     def forward(self, X):
         N = X.shape[0]//2
@@ -125,10 +127,10 @@ class MergedAdvNetwork:
         X = X.reshape(2*N, nv, 1)
         multiX = torch.from_numpy(X).float().repeat(1,1,rep)
 
-        x_mean = self.input_param[s-2:t-1][0]
-        x_std = self.input_param[s-2:t-1][1]
-        y_mean = self.out_param[s-2:t-1][2]
-        y_std = self.out_param[s-2:t-1][3]
+        x_mean = self.input_param[s-2:t-1][:, 0]
+        x_std = self.input_param[s-2:t-1][:, 1]
+        y_mean = self.out_param[s-2:t-1][:, 2]
+        y_std = self.out_param[s-2:t-1][:, 3]
 
         coords = torch.zeros((nv, 2*rep, 128)).to(device)
         coords[:, :rep, :] = ((multiX[:N] - x_mean) / x_std).permute(1,2,0)
@@ -243,11 +245,11 @@ class TenSelfNetwork:
         self.out_param = out_param # contains 2 numbers
         # self.model_path = model_path
         self.device = device
-        self.model = self.loadModel(model_path, device)
+        self.model = self.loadModel(model_path)
     
-    def loadModel(self, model_path, device):
+    def loadModel(self, model_path):
         model = Net_ves_selften(12, 2.4, 24)
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.load_state_dict(torch.load(model_path, map_location=self.device))
         model.eval()
         return model
     
@@ -259,15 +261,15 @@ class TenSelfNetwork:
 
         x_mean = self.input_param[0]
         x_std = self.input_param[1]
-        y_mean = self.out_param[2]
-        y_std = self.out_param[3]
+        y_mean = self.input_param[2]
+        y_std = self.input_param[3]
         
         # Adjust the input shape for the network
         XinitShape = np.zeros((nv, 2, 128))
         for k in range(nv):
             XinitShape[k, 0, :] = (Xin[:N, k] - x_mean) / x_std
             XinitShape[k, 1, :] = (Xin[N:, k] - y_mean) / y_std
-        XinitConv = torch.tensor(XinitShape)
+        XinitConv = torch.from_numpy(XinitShape).float()
         return XinitConv
     
     def postProcess(self, pred):
@@ -290,7 +292,7 @@ class TenSelfNetwork:
         return tenPredstand
 
 
-class TenAdvNetwork:
+class MergedTenAdvNetwork:
     '''
     Input size (nv, 2, 128), 2 channels for x and y coords
     Output size (nv, 2, 128), 2 channels for real and imag 
@@ -300,6 +302,61 @@ class TenAdvNetwork:
         self.out_param = out_param # size (127, 4)
         # self.model_path = model_path
         self.device = device
-        self.model = self.loadModel(model_path, device)
+        self.model = self.loadModel(model_path)
     
+    def loadModel(self, path):
+        s = 2
+        t = 128
+        rep = t - s + 1 # number of repetitions
+        # prepare the network
+        model = Net_ves_merge_advten(12, 2.5, 24, rep=rep)
+        dicts = []
+        # models = []
+        for l in range(s, t+1):
+            model_path = path + "/ves_advten_mode"+str(l)+".pth"
+            dicts.append(torch.load(model_path, map_location = self.device))
+
+        # organize and match trained weights
+        dict_keys = dicts[-1].keys()
+        new_weights = {}
+        for key in dict_keys:
+            key_comps = key.split('.')
+            if key_comps[-1][0:3] =='num': # skip key "num_batches_tracked" in bn 
+                continue
+            params = []
+            for dict in dicts:
+                params.append(dict[key])
+            new_weights[key] = torch.concat(tuple(params),dim=0)
+        model.load_state_dict(new_weights, strict=True)
+        model.eval()
+        model.to(self.device)
+        return model
     
+    def preProcess(self, Xin):
+        # Normalize input
+        nv = Xin.shape[-1]
+        input = Xin[:, None].repeat(127, axis=-1).reshape(2, 128, nv, 127)
+        # use broadcasting
+        input[0] = (input[0] - self.input_param[:, 0])/self.input_param[:, 1]
+        input[1] = (input[1] - self.input_param[:, 2])/self.input_param[:, 3]
+        
+        return input.transpose(2,3,0,1).reshape(nv, 2*127, -1)
+    
+    def forward(self, input):
+        nv = input.shape[0]
+        input = torch.from_numpy(input).float().to(self.device)
+        self.model.eval()
+        with torch.no_grad():
+            out =  self.model(input)
+        
+        out = out.cpu().numpy()
+        return out.reshape(nv, 127, 2, -1).transpose(2, 3, 0, 1)
+    
+    def postProcess(self, out):
+        # out shape : (2, 128, nv, 127)
+        # use broadcasting
+        out[0] = out[0] * self.out_param[:, 1] + self.out_param[:, 0]
+        out[1] = out[1] * self.out_param[:, 3] + self.out_param[:, 2]
+
+        return out.transpose(3, 2, 0, 1) # shape: (127, nv, 2, 128)
+        
