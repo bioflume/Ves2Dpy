@@ -397,46 +397,47 @@ class MLARM_manyfree_py:
     def __init__(self, dt, vinf, oc, advNetInputNorm, advNetOutputNorm,
                  relaxNetInputNorm, relaxNetOutputNorm, nearNetInputNorm,
                  nearNetOutputNorm, tenSelfNetInputNorm, tenSelfNetOutputNorm,
-                 tenAdvNetInputNorm, tenAdvNetOutputNorm):
+                 tenAdvNetInputNorm, tenAdvNetOutputNorm, device):
         self.dt = dt  # time step size
         self.vinf = vinf  # background flow (analytic -- input as function of vesicle config)
         self.oc = oc  # curve class
         self.kappa = 1  # bending stiffness is 1 for our simulations
+        self.device = device
         
         # Normalization values for advection (translation) networks
         self.advNetInputNorm = advNetInputNorm
         self.advNetOutputNorm = advNetOutputNorm
         self.mergedAdvNetwork = MergedAdvNetwork(self.advNetInputNorm, self.advNetOutputNorm, 
                                 model_path="../trained/ves_adv_trained", 
-                                device = torch.device("cpu"))
+                                device = device)
         
         # Normalization values for relaxation network
         self.relaxNetInputNorm = relaxNetInputNorm
         self.relaxNetOutputNorm = relaxNetOutputNorm
         self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetInputNorm, self.relaxNetOutputNorm, 
                                 model_path="../trained/ves_relax_DIFF_June8_625k_dt1e-5.pth", 
-                                device = torch.device("cpu"))
+                                device = device)
         
         # Normalization values for near field networks
         self.nearNetInputNorm = nearNetInputNorm
         self.nearNetOutputNorm = nearNetOutputNorm
         self.nearNetwork = MergedNearFourierNetwork(self.nearNetInputNorm, self.nearNetOutputNorm,
                                 model_path="",
-                                device = torch.device("cpu"))
+                                device = device)
         
         # Normalization values for tension-self network
         self.tenSelfNetInputNorm = tenSelfNetInputNorm
         self.tenSelfNetOutputNorm = tenSelfNetOutputNorm
         self.tenSelfNetwork = TenSelfNetwork(self.tenSelfNetInputNorm, self.tenSelfNetOutputNorm, 
                                 model_path="../trained/ves_selften.pth", 
-                                device = torch.device("cpu"))
+                                device = device)
         
         # Normalization values for tension-advection networks
         self.tenAdvNetInputNorm = tenAdvNetInputNorm
         self.tenAdvNetOutputNorm = tenAdvNetOutputNorm
         self.tenAdvNetwork = MergedTenAdvNetwork(self.tenAdvNetInputNorm, self.tenAdvNetOutputNorm, 
                                 model_path="../trained/ves_advten_models", 
-                                device = torch.device("cpu"))
+                                device = device)
     
     def time_step(self, Xold, tenOld):
         oc = self.oc

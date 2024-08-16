@@ -86,7 +86,7 @@ class MergedAdvNetwork:
         self.device = device
         self.model = self.loadModel(model_path)
         
-    def loadModel(self, path):
+    def loadModel(self, model_path):
         # s = 2
         # t = 128
         # rep = t - s + 1 # number of repetitions
@@ -112,7 +112,8 @@ class MergedAdvNetwork:
         # model.load_state_dict(new_weights, strict=True)
 
         model = Net_merge_advection(12, 1.7, 20, rep=127)
-        model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_adv.pth"))
+        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_adv.pth"))
         model.eval()
         model.to(self.device)
         return model
@@ -295,6 +296,7 @@ class TenSelfNetwork:
 
 class MergedTenAdvNetwork:
     '''
+    For each mode,
     Input size (nv, 2, 128), 2 channels for x and y coords
     Output size (nv, 2, 128), 2 channels for real and imag 
     '''
@@ -305,7 +307,7 @@ class MergedTenAdvNetwork:
         self.device = device
         self.model = self.loadModel(model_path)
     
-    def loadModel(self, path):
+    def loadModel(self, model_path):
         # s = 2
         # t = 128
         # rep = t - s + 1 # number of repetitions
@@ -330,7 +332,8 @@ class MergedTenAdvNetwork:
         #     new_weights[key] = torch.concat(tuple(params),dim=0)
         # model.load_state_dict(new_weights, strict=True)
         model = Net_ves_merge_advten(12, 2.5, 24, rep=127)
-        model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_advten.pth"))
+        # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_advten.pth"))
+        model.load_state_dict(torch.load(model_path, map_location=self.device))
         model.eval()
         model.to(self.device)
         return model
@@ -366,6 +369,7 @@ class MergedTenAdvNetwork:
 
 class MergedNearFourierNetwork:
     '''
+    For each mode,
     Input size (nv, 2, 128), 2 channels for x and y coords
     Output size (nv, 12, 128), 12 channels are 
         (vx_real_layer0, vx_real_layer1, vx_real_layer2, 
@@ -406,7 +410,8 @@ class MergedNearFourierNetwork:
         # model.load_state_dict(new_weights, strict=True)
 
         model = Net_ves_merge_nocoords_nearFourier(14, 3.2, 28, rep=128)
-        model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_nearFourier.pth"))
+        # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_nearFourier.pth"))
+        model.load_state_dict(torch.load(path, map_location=self.device))
         model.eval()
         model.to(self.device)
         return model
