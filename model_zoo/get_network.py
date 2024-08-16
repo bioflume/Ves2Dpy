@@ -6,6 +6,7 @@ from model_zoo.Net_ves_merge_adv import Net_merge_advection
 from model_zoo.Net_ves_factor import pdeNet_Ves_factor_periodic
 from model_zoo.Net_ves_selften import Net_ves_selften
 from model_zoo.Net_ves_merge_advten import Net_ves_merge_advten
+from model_zoo.Net_ves_merge_nocoords_nearFourier import Net_ves_merge_nocoords_nearFourier
 
 class RelaxNetwork:
     '''
@@ -86,32 +87,32 @@ class MergedAdvNetwork:
         self.model = self.loadModel(model_path)
         
     def loadModel(self, path):
-        s = 2
-        t = 128
-        rep = t - s + 1 # number of repetitions
-        # prepare the network
-        model = Net_merge_advection(12, 1.7, 20, rep=rep)
-        dicts = []
-        # models = []
-        for l in range(s, t+1):
-            model_path = path + "/ves_fft_mode"+str(l)+".pth"
-            dicts.append(torch.load(model_path, map_location = self.device))
-            # subnet = Net_ves_adv_fft(12, 1.7, 20)
-            # subnet.load_state_dict(dicts[-1])
-            # models.append(subnet.to(device))
+        # s = 2
+        # t = 128
+        # rep = t - s + 1 # number of repetitions
+        # # prepare the network
+        # model = Net_merge_advection(12, 1.7, 20, rep=rep)
+        # dicts = []
+        # # models = []
+        # for l in range(s, t+1):
+        #     model_path = path + "/ves_fft_mode"+str(l)+".pth"
+        #     dicts.append(torch.load(model_path, map_location = self.device))
 
-        # organize and match trained weights
-        dict_keys = dicts[-1].keys()
-        new_weights = {}
-        for key in dict_keys:
-            key_comps = key.split('.')
-            if key_comps[-1][0:3] =='num':
-                continue
-            params = []
-            for dict in dicts:
-                params.append(dict[key])
-            new_weights[key] = torch.concat(tuple(params),dim=0)
-        model.load_state_dict(new_weights, strict=True)
+        # # organize and match trained weights
+        # dict_keys = dicts[-1].keys()
+        # new_weights = {}
+        # for key in dict_keys:
+        #     key_comps = key.split('.')
+        #     if key_comps[-1][0:3] =='num':
+        #         continue
+        #     params = []
+        #     for dict in dicts:
+        #         params.append(dict[key])
+        #     new_weights[key] = torch.concat(tuple(params),dim=0)
+        # model.load_state_dict(new_weights, strict=True)
+
+        model = Net_merge_advection(12, 1.7, 20, rep=127)
+        model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_adv.pth"))
         model.eval()
         model.to(self.device)
         return model
@@ -305,29 +306,31 @@ class MergedTenAdvNetwork:
         self.model = self.loadModel(model_path)
     
     def loadModel(self, path):
-        s = 2
-        t = 128
-        rep = t - s + 1 # number of repetitions
-        # prepare the network
-        model = Net_ves_merge_advten(12, 2.5, 24, rep=rep)
-        dicts = []
-        # models = []
-        for l in range(s, t+1):
-            model_path = path + "/ves_advten_mode"+str(l)+".pth"
-            dicts.append(torch.load(model_path, map_location = self.device))
+        # s = 2
+        # t = 128
+        # rep = t - s + 1 # number of repetitions
+        # # prepare the network
+        # model = Net_ves_merge_advten(12, 2.5, 24, rep=rep)
+        # dicts = []
+        # # models = []
+        # for l in range(s, t+1):
+        #     model_path = path + "/ves_advten_mode"+str(l)+".pth"
+        #     dicts.append(torch.load(model_path, map_location = self.device))
 
-        # organize and match trained weights
-        dict_keys = dicts[-1].keys()
-        new_weights = {}
-        for key in dict_keys:
-            key_comps = key.split('.')
-            if key_comps[-1][0:3] =='num': # skip key "num_batches_tracked" in bn 
-                continue
-            params = []
-            for dict in dicts:
-                params.append(dict[key])
-            new_weights[key] = torch.concat(tuple(params),dim=0)
-        model.load_state_dict(new_weights, strict=True)
+        # # organize and match trained weights
+        # dict_keys = dicts[-1].keys()
+        # new_weights = {}
+        # for key in dict_keys:
+        #     key_comps = key.split('.')
+        #     if key_comps[-1][0:3] =='num': # skip key "num_batches_tracked" in bn 
+        #         continue
+        #     params = []
+        #     for dict in dicts:
+        #         params.append(dict[key])
+        #     new_weights[key] = torch.concat(tuple(params),dim=0)
+        # model.load_state_dict(new_weights, strict=True)
+        model = Net_ves_merge_advten(12, 2.5, 24, rep=127)
+        model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_advten.pth"))
         model.eval()
         model.to(self.device)
         return model
@@ -359,4 +362,82 @@ class MergedTenAdvNetwork:
         out[1] = out[1] * self.out_param[:, 3] + self.out_param[:, 2]
 
         return out.transpose(3, 2, 0, 1) # shape: (127, nv, 2, 128)
+        
+
+class MergedNearFourierNetwork:
+    '''
+    Input size (nv, 2, 128), 2 channels for x and y coords
+    Output size (nv, 12, 128), 12 channels are 
+        (vx_real_layer0, vx_real_layer1, vx_real_layer2, 
+        vy_real_layer0, vy_real_layer1, vy_real_layer2,
+        vx_imag_layer0, vx_imag_layer1, vx_imag_layer2, 
+        vy_imag_layer0, vy_imag_layer1, vy_imag_layer2) for three layers
+    '''
+    def __init__(self, input_param, out_param, model_path, device):
+        self.input_param = input_param # size (128, 4)
+        self.out_param = out_param # size (128, 2, 12)
+        # self.model_path = model_path
+        self.device = device
+        self.model = self.loadModel(model_path)
+    
+    def loadModel(self, path):
+        # s = 1
+        # t = 128
+        # rep = t - s + 1 # number of repetitions
+        # # prepare the network
+        # model = Net_ves_merge_nocoords_nearFourier(14, 3.2, 28, rep=rep)
+        # dicts = []
+        # # models = []
+        # for l in range(s, t+1):
+        #     model_path = f"/work/09452/alberto47/ls6/vesicle_nearF2024/trained_nocoords/Ves_nearFourier_nocoords_mode{l}.pth"
+        #     dicts.append(torch.load(model_path, map_location = self.device))
+
+        # # organize and match trained weights
+        # dict_keys = dicts[-1].keys()
+        # new_weights = {}
+        # for key in dict_keys:
+        #     key_comps = key.split('.')
+        #     if key_comps[-1][0:3] =='num': # skip key "num_batches_tracked" in bn 
+        #         continue
+        #     params = []
+        #     for dict in dicts:
+        #         params.append(dict[key])
+        #     new_weights[key] = torch.concat(tuple(params),dim=0)
+        # model.load_state_dict(new_weights, strict=True)
+
+        model = Net_ves_merge_nocoords_nearFourier(14, 3.2, 28, rep=128)
+        model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_nearFourier.pth"))
+        model.eval()
+        model.to(self.device)
+        return model
+    
+    def preProcess(self, Xin):
+        # Normalize input
+        nv = Xin.shape[-1]
+        input = Xin[:, None].repeat(128, axis=-1).reshape(2, 128, nv, 128)
+        # use broadcasting
+        input[0] = (input[0] - self.input_param[:, 0])/self.input_param[:, 1]
+        input[1] = (input[1] - self.input_param[:, 2])/self.input_param[:, 3]
+        
+        return input.transpose(2,3,0,1).reshape(nv, 2*128, -1)
+    
+    def forward(self, input):
+        nv = input.shape[0]
+        input = torch.from_numpy(input).float().to(self.device)
+        self.model.eval()
+        with torch.no_grad():
+            out =  self.model(input)
+        
+        out = out.cpu().numpy()
+        return out.reshape(nv, 128, 12, -1).transpose(3, 0, 1, 2)
+    
+    def postProcess(self, out):
+        # out shape : (128, nv, num_modes=128, 12)
+        # use broadcasting
+        out = out * self.out_param[:, 1] + self.out_param[:, 0]
+
+        reshaped_out =  out.transpose(1, 0, 2, 3) # shape: (nv, 128, num_modes=128, 12)
+        # after postprocess, output velx_real, vely_real, velx_imag, vely_imag
+        return reshaped_out[..., :3], reshaped_out[..., 3:6], reshaped_out[..., 6:9], reshaped_out[..., 9:]
+        
         

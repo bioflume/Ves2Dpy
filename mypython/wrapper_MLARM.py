@@ -6,7 +6,7 @@ from capsules import capsules
 from rayCasting import ray_casting
 from rbf_create import rbfcreate
 from rbf_interp import rbfinterp
-from model_zoo.get_network import RelaxNetwork, TenSelfNetwork, MergedAdvNetwork, MergedTenAdvNetwork
+from model_zoo.get_network import RelaxNetwork, TenSelfNetwork, MergedAdvNetwork, MergedTenAdvNetwork, MergedNearFourierNetwork
 
 
 class MLARM_py:
@@ -420,6 +420,9 @@ class MLARM_manyfree_py:
         # Normalization values for near field networks
         self.nearNetInputNorm = nearNetInputNorm
         self.nearNetOutputNorm = nearNetOutputNorm
+        self.nearNetwork = MergedNearFourierNetwork(self.nearNetInputNorm, self.nearNetOutputNorm,
+                                model_path="",
+                                device = torch.device("cpu"))
         
         # Normalization values for tension-self network
         self.tenSelfNetInputNorm = tenSelfNetInputNorm
@@ -511,16 +514,20 @@ class MLARM_manyfree_py:
         # How many modes to be used
         # MATLAB: modes = [(0:N/2-1) (-N/2:-1)]
         # modes = np.concatenate((np.arange(0,N/2), np.arange(-N/2,0)))
-        modesInUse = 16
+        # modesInUse = 16
         # modeList = np.where(np.abs(modes) <= modesInUse)[0] # Shan: bug, creates 33 modes
-        modeList = [i for i in range(modesInUse)] + [128-i for i in range(modesInUse, 0, -1)]
+        # modeList = [i for i in range(modesInUse)] + [128-i for i in range(modesInUse, 0, -1)]
 
         # Normalize input
-        input_net = np.zeros((modesInUse, nv, 2, N))
-        for imode in range(modesInUse):
-            for k in range(nv):
-                input_net[imode, k, 0, :] = (Xstand[:N, k] - in_param[imode, 0]) / in_param[imode, 1]
-                input_net[imode, k, 1, :] = (Xstand[N:, k] - in_param[imode, 2]) / in_param[imode, 3]
+        # input_net = np.zeros((modesInUse, nv, 2, N))
+        # for imode in range(modesInUse):
+        #     for k in range(nv):
+        #         input_net[imode, k, 0, :] = (Xstand[:N, k] - in_param[imode, 0]) / in_param[imode, 1]
+        #         input_net[imode, k, 1, :] = (Xstand[N:, k] - in_param[imode, 2]) / in_param[imode, 3]
+
+        input_net = self.nearNetwork.preProcess(Xstand)
+        net_pred = self.nearNetwork.forward(input_net)
+        velx_real, vely_real, velx_imag, vely_imag = self.nearNetwork.postProcess(net_pred)
 
         # Standardize tracJump
         # fstandRe = np.zeros((N, nv))
@@ -538,30 +545,21 @@ class MLARM_manyfree_py:
         fstandRe = np.real(zh)
         fstandIm = np.imag(zh)
 
-        input_conv = torch.from_numpy(input_net).float()
-        # Xpredict = self.near_vel_predict(input_conv, nv)
-        Xpredict = np.random.rand(modesInUse*2, nv, 12, N)
-        #     % each of size is (nv x 12 x 128) 
-        #   % channel 1-3: vx_real_layers 0, 1, 2
-        #   % channel 4-6; vy_real_layers 0, 1, 2
-        #   % channel 7-9: vx_imag_layers 0, 1, 2
-        #   % channel 10-12: vy_imag_layers 0, 1, 2
-
         # Initialize outputs
-        velx_real = [np.zeros((N, N, nlayers)) for _ in range(nv)]
-        vely_real = [np.zeros((N, N, nlayers)) for _ in range(nv)]
-        velx_imag = [np.zeros((N, N, nlayers)) for _ in range(nv)]
-        vely_imag = [np.zeros((N, N, nlayers)) for _ in range(nv)]
+        # velx_real = [np.zeros((N, N, nlayers)) for _ in range(nv)]
+        # vely_real = [np.zeros((N, N, nlayers)) for _ in range(nv)]
+        # velx_imag = [np.zeros((N, N, nlayers)) for _ in range(nv)]
+        # vely_imag = [np.zeros((N, N, nlayers)) for _ in range(nv)]
 
         # Denormalize output
-        for ij, imode in enumerate(modeList):
-            pred = Xpredict[ij]
-            for k in range(nv):
-                for ic in range(nlayers):
-                    velx_real[k][:, imode, ic] = (pred[k, ic] * out_param[imode, 1, ic]) + out_param[imode, 0, ic]
-                    vely_real[k][:, imode, ic] = (pred[k, nlayers + ic] * out_param[imode, 1, nlayers + ic]) + out_param[imode, 0, nlayers + ic]
-                    velx_imag[k][:, imode, ic] = (pred[k, 2 * nlayers + ic] * out_param[imode, 1, 2 * nlayers + ic]) + out_param[imode, 0, 2 * nlayers + ic]
-                    vely_imag[k][:, imode, ic] = (pred[k, 3 * nlayers + ic] * out_param[imode, 1, 3 * nlayers + ic]) + out_param[imode, 0, 3 * nlayers + ic]
+        # for ij, imode in enumerate(modeList):
+        #     pred = Xpredict[ij]
+        #     for k in range(nv):
+        #         for ic in range(nlayers):
+        #             velx_real[k][:, imode, ic] = (pred[k, ic] * out_param[imode, 1, ic]) + out_param[imode, 0, ic]
+        #             vely_real[k][:, imode, ic] = (pred[k, nlayers + ic] * out_param[imode, 1, nlayers + ic]) + out_param[imode, 0, nlayers + ic]
+        #             velx_imag[k][:, imode, ic] = (pred[k, 2 * nlayers + ic] * out_param[imode, 1, 2 * nlayers + ic]) + out_param[imode, 0, 2 * nlayers + ic]
+        #             vely_imag[k][:, imode, ic] = (pred[k, 3 * nlayers + ic] * out_param[imode, 1, 3 * nlayers + ic]) + out_param[imode, 0, 3 * nlayers + ic]
 
         velx = np.zeros((N, nlayers, nv))
         vely = np.zeros((N, nlayers, nv))
@@ -659,8 +657,8 @@ class MLARM_manyfree_py:
 
             for k in range(nv):
                 if i_call_near[k]:
-                    ids_in = ids_in_store[k] #这个也可能重复
-                    points_in = np.array(query_X[k]).T #这个也可能重复
+                    ids_in = ids_in_store[k] # possible duplicates?
+                    points_in = np.array(query_X[k]).T # possible duplicates?
                     ves_id = np.unique(near_ves_ids[k])
 
                     Xin = np.vstack([xlayers[:, :, ves_id].reshape(1, 3 * N), ylayers[:, :, ves_id].reshape(1, 3 * N)])
@@ -670,7 +668,7 @@ class MLARM_manyfree_py:
                     rbf_vel_x = rbfinterp(points_in, options = rbfcreate(Xin, velXInput, RBFFunction='linear'))
                     rbf_vel_y = rbfinterp(points_in, options = rbfcreate(Xin, velYInput, RBFFunction='linear'))
 
-                    far_x = far_field[:N, k] #这个什么意思，为什么更新far_field
+                    far_x = far_field[:N, k] #
                     far_y = far_field[N:, k]
                     far_x[ids_in] = rbf_vel_x
                     far_y[ids_in] = rbf_vel_y
