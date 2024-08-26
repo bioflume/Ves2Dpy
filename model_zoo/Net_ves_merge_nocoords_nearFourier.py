@@ -27,23 +27,26 @@ class Starter_Block(nn.Module):
         # self.W = nn.Conv1d(1, 1, kernel_size=3, stride=1, padding=1)
 
     def forward(self, input):
+        bs = input.shape[0]
 
         out_1_1 = self.relu(self.conv1_1(input))
         out_1_2 = self.relu(self.conv1_2(input))
-        # out = torch.concat((out_1_1, out_1_2), dim=1)
         ch = out_1_1.shape[1]//self.rep
-        features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
-                               out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_1_1.reshape(bs, self.rep, ch, -1), out_1_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn1(out)
 
         out_2_1 = self.relu(self.conv2_1(out))
         out_2_2 = self.relu(self.conv2_2(out))
-        # out = torch.concat((out_2_1, out_2_2), dim=1)
         ch = out_2_1.shape[1]//self.rep
-        features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
-                               out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_2_1.reshape(bs, self.rep, ch, -1), out_2_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn2(out)
 
         out = self.relu(self.deconv1(out))
@@ -80,25 +83,27 @@ class Evo_Block(nn.Module):
         # self.W = nn.Conv1d(1, 1, kernel_size=3, stride=1, padding=1)
 
     def forward(self, input):
-        # residual = input[:,:-2]
-        # mode = input[:,-2:]
+        
+        bs = input.shape[0]
 
         out_1_1 = self.relu(self.conv1_1(input))
         out_1_2 = self.relu(self.conv1_2(input))
-        # out = torch.concat((out_1_1, out_1_2), dim=1)
         ch = out_1_1.shape[1]//self.rep
-        features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
-                               out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_1_1.reshape(bs, self.rep, ch, -1), out_1_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn1(out)
 
         out_2_1 = self.relu(self.conv2_1(out))
         out_2_2 = self.relu(self.conv2_2(out))
-        # out = torch.concat((out_2_1, out_2_2), dim=1)
         ch = out_2_1.shape[1]//self.rep
-        features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
-                               out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_2_1.reshape(bs, self.rep, ch, -1), out_2_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn2(out)
 
         out = self.relu(self.deconv1(out))
@@ -138,25 +143,27 @@ class End_Block(nn.Module):
         # self.W = nn.Conv1d(1, 1, kernel_size=3, stride=1, padding=1)
 
     def forward(self, input):
-        # residual = input[:,:-2]
-        # mode = input[:,-2:]
-
+        
+        bs = input.shape[0]
+        
         out_1_1 = self.relu(self.conv1_1(input))
         out_1_2 = self.relu(self.conv1_2(input))
-        # out = torch.concat((out_1_1, out_1_2), dim=1)
         ch = out_1_1.shape[1]//self.rep
-        features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
-                               out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_1_1.reshape(bs, self.rep, ch, -1), out_1_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn1(out)
 
         out_2_1 = self.relu(self.conv2_1(out))
         out_2_2 = self.relu(self.conv2_2(out))
-        # out = torch.concat((out_2_1, out_2_2), dim=1)
         ch = out_2_1.shape[1]//self.rep
-        features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
-                               out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_2_1.reshape(bs, self.rep, ch, -1), out_2_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn2(out)
 
         out = self.relu(self.deconv1(out))

@@ -26,25 +26,25 @@ class Starter_Block(nn.Module):
         self.mix = nn.Conv1d(deconv_ch, ch*rep, kernel_size=3, stride=1, padding=1, groups=rep)
 
     def forward(self, input):
-
+        bs = input.shape[0]
         out_1_1 = self.relu(self.conv1_1(input))
         out_1_2 = self.relu(self.conv1_2(input))
         ch = out_1_1.shape[1]//self.rep
-        features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
-                               out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        # out = torch.concat((out_1_1[:,:ch], out_1_2[:,:ch],
-        #                     out_1_1[:,ch:], out_1_2[:,ch:]), dim=1)
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_1_1.reshape(bs, self.rep, ch, -1), out_1_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn1(out)
 
         out_2_1 = self.relu(self.conv2_1(out))
         out_2_2 = self.relu(self.conv2_2(out))
         ch = out_2_1.shape[1]//self.rep
-        # out = torch.concat((out_2_1[:,:ch], out_2_2[:,:ch],
-        #                     out_2_1[:,ch:], out_2_2[:,ch:]), dim=1)
-        features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
-                               out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_2_1.reshape(bs, self.rep, ch, -1), out_2_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn2(out)
         
 
@@ -54,9 +54,12 @@ class Starter_Block(nn.Module):
         out = self.bn4(out)
 
         out = self.mix(out)
-        members = [torch.cat((out[:, self.ch*i:self.ch*(i+1)], input[:,[2*i+1]]),dim=1) for i in range(self.rep)]
-        out = torch.cat(tuple(members), dim=1)
-
+        # members = [torch.cat((out[:, self.ch*i:self.ch*(i+1)], input[:,[2*i+1]]),dim=1) for i in range(self.rep)]
+        # out = torch.cat(tuple(members), dim=1)
+        out = torch.cat((out.reshape(bs, self.rep, self.ch, -1), 
+                         input[:, [2*i+1 for i in range(self.rep)]].reshape(bs, self.rep, 1, -1)), dim=2)
+        out = out.reshape(bs, (self.ch+1)*self.rep, -1)
+        
         return out
 
 class Evo_Block(nn.Module):
@@ -83,30 +86,31 @@ class Evo_Block(nn.Module):
         self.mix = nn.Conv1d(deconv_ch, ch*rep, kernel_size=3, stride=1, padding=1, groups=rep)
 
     def forward(self, input):
-        features = [input[:, (self.ch+1)*i:(self.ch+1)*(i+1)-1] for i in range(self.rep)]
-        residual = torch.cat(tuple(features), dim=1)
-
-        # residual = input[:,:-1]
-        # mode = input[:,-1].reshape(-1,1,256)
+        bs = input.shape[0]
+        
+        # features = [input[:, (self.ch+1)*i:(self.ch+1)*(i+1)-1] for i in range(self.rep)]
+        # residual = torch.cat(tuple(features), dim=1)
+        ids = torch.concat([torch.arange((self.ch+1)*i, (self.ch+1)*(i+1)-1) for i in range(self.rep)])
+        residual = input[:,ids]
 
         out_1_1 = self.relu(self.conv1_1(input))
         out_1_2 = self.relu(self.conv1_2(input))
         ch = out_1_1.shape[1]//self.rep
-        # out = torch.concat((out_1_1[:,:ch], out_1_2[:,:ch],
-        #                     out_1_1[:,ch:], out_1_2[:,ch:]), dim=1)
-        features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
-                               out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_1_1.reshape(bs, self.rep, ch, -1), out_1_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn1(out)
 
         out_2_1 = self.relu(self.conv2_1(out))
         out_2_2 = self.relu(self.conv2_2(out))
         ch = out_2_1.shape[1]//self.rep
-        # out = torch.concat((out_2_1[:,:ch], out_2_2[:,:ch],
-        #                     out_2_1[:,ch:], out_2_2[:,ch:]), dim=1)
-        features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
-                               out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_2_1.reshape(bs, self.rep, ch, -1), out_2_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn2(out)
 
         out = self.relu(self.deconv1(out))
@@ -115,13 +119,14 @@ class Evo_Block(nn.Module):
         out = self.bn4(out)
 
         out = self.mix(out)
-        # print(out)
 
         out = out + residual
 
-        # out_u = torch.concat((out, mode), dim=1)
-        members = [torch.cat((out[:, self.ch*i:self.ch*(i+1)], input[:,[(self.ch+1)*(i+1)-1]]),dim=1) for i in range(self.rep)]
-        out_u = torch.cat(tuple(members), dim=1)
+        # members = [torch.cat((out[:, self.ch*i:self.ch*(i+1)], input[:,[(self.ch+1)*(i+1)-1]]),dim=1) for i in range(self.rep)]
+        # out_u = torch.cat(tuple(members), dim=1)
+        out = torch.cat((out.reshape(bs, self.rep, self.ch, -1), 
+                         input[:, [(self.ch+1)*(i+1)-1 for i in range(self.rep)]].reshape(bs, self.rep, 1, -1)), dim=2)
+        out_u = out.reshape(bs, (self.ch+1)*self.rep, -1)
        
         return out_u
 
@@ -151,26 +156,26 @@ class End_Block(nn.Module):
     def forward(self, input):
         # residual = input[:,:-1]
         # mode = input[:,-1].reshape(-1,1,256)
+        bs = input.shape[0]
 
         out_1_1 = self.relu(self.conv1_1(input))
         out_1_2 = self.relu(self.conv1_2(input))
         ch = out_1_1.shape[1]//self.rep
-        # out = torch.concat((out_1_1[:,:ch], out_1_2[:,:ch],
-        #                     out_1_1[:,ch:], out_1_2[:,ch:]), dim=1)
-        features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
-                               out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
-        
+        # features = [torch.cat((out_1_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_1_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_1_1.reshape(bs, self.rep, ch, -1), out_1_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn1(out)
 
         out_2_1 = self.relu(self.conv2_1(out))
         out_2_2 = self.relu(self.conv2_2(out))
         ch = out_2_1.shape[1]//self.rep
-        # out = torch.concat((out_2_1[:,:ch], out_2_2[:,:ch],
-        #                     out_2_1[:,ch:], out_2_2[:,ch:]), dim=1)
-        features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
-                               out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
-        out = torch.cat(tuple(features), dim=1)
+        # features = [torch.cat((out_2_1[:, (ch)*i:(ch)*(i+1)],
+        #                        out_2_2[:, (ch)*i:(ch)*(i+1)],),dim=1)  for i in range(self.rep)]
+        # out = torch.cat(tuple(features), dim=1)
+        out = torch.cat((out_2_1.reshape(bs, self.rep, ch, -1), out_2_2.reshape(bs, self.rep, ch, -1)), dim=2)
+        out = out.reshape(bs, 2*ch*self.rep, -1)
         out = self.bn2(out)
 
         out = self.relu(self.deconv1(out))
