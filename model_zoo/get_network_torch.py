@@ -26,6 +26,7 @@ class RelaxNetwork:
     def loadModel(self, model_path):
         model = pdeNet_Ves_factor_periodic(14, 2.9)
         model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model.to(self.device)
         model.eval()
         return model
     
@@ -43,7 +44,7 @@ class RelaxNetwork:
         Xin[:N] = (Xin[:N] - x_mean) / x_std
         Xin[N:] = (Xin[N:] - y_mean) / y_std
 
-        XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float64)
+        XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float64).to(self.device)
         XinitShape[:, 0, :] = Xin[:N].T
         XinitShape[:, 1, :] = Xin[N:].T
         # XinitConv = torch.from_numpy(XinitShape).float()
@@ -58,7 +59,7 @@ class RelaxNetwork:
         out_y_mean = self.out_param[2]
         out_y_std = self.out_param[3]
 
-        DXout = torch.zeros((2*N, nv), dtype=torch.float64)
+        DXout = torch.zeros((2*N, nv), dtype=torch.float64).to(self.device)
         DXout[:N] = (DXpred[:, 0, :] * out_x_std + out_x_mean).T
         DXout[N:] = (DXpred[:, 1, :] * out_y_std + out_y_mean).T
         return DXout
@@ -255,6 +256,7 @@ class TenSelfNetwork:
     def loadModel(self, model_path):
         model = Net_ves_selften(12, 2.4, 24)
         model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model.to(self.device)
         model.eval()
         return model
     
@@ -270,7 +272,7 @@ class TenSelfNetwork:
         y_std = self.input_param[3]
         
         # Adjust the input shape for the network
-        XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float64)
+        XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float64).to(self.device)
         for k in range(nv):
             XinitShape[k, 0, :] = (Xin[:N, k] - x_mean) / x_std
             XinitShape[k, 1, :] = (Xin[N:, k] - y_mean) / y_std
@@ -284,7 +286,7 @@ class TenSelfNetwork:
         out_mean = self.out_param[0]
         out_std = self.out_param[1]
 
-        tenPred = torch.zeros((N, nv))
+        tenPred = torch.zeros((N, nv)).to(self.device)
         for k in range(nv):
             tenPred[:,k] = (pred[k] * out_std + out_mean)
         return tenPred
@@ -351,20 +353,19 @@ class MergedTenAdvNetwork:
         
         return input.permute(2,3,0,1).reshape(nv, 2*127, -1)
     
-    def forward(self, input):
-        nv = input.shape[0]
+    def forward(self, inp):
+        nv = inp.shape[0]
         # input = torch.from_numpy(input).float().to(self.device)
         self.model.eval()
         with torch.no_grad():
-            out =  self.model(input.float())
+            out =  self.model(inp.float())
         
-        # out = out
         return out.reshape(nv, 127, 2, -1).permute(2, 3, 0, 1)
     
     def postProcess(self, out):
         # out shape : (2, 128, nv, 127)
         # use broadcasting
-        output = torch.zeros_like(out, dtype=torch.float64) # 
+        output = torch.zeros_like(out, dtype=torch.float64).to(self.device) # 
         output[0] = out[0] * self.out_param[:, 1] + self.out_param[:, 0]
         output[1] = out[1] * self.out_param[:, 3] + self.out_param[:, 2]
 

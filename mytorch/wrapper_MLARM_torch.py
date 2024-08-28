@@ -8,7 +8,7 @@ from capsules import capsules
 from rayCasting import ray_casting
 # from rbf_create import rbfcreate
 # from rbf_interp import rbfinterp
-import scipy
+from scipy.spatial import KDTree
 from scipy.interpolate import RBFInterpolator as scipyinterp
 from model_zoo.get_network_torch import RelaxNetwork, TenSelfNetwork, MergedAdvNetwork, MergedTenAdvNetwork, MergedNearFourierNetwork
 
@@ -411,35 +411,35 @@ class MLARM_manyfree_py:
         # Normalization values for advection (translation) networks
         self.advNetItorchutNorm = advNetItorchutNorm
         self.advNetOutputNorm = advNetOutputNorm
-        self.mergedAdvNetwork = MergedAdvNetwork(self.advNetItorchutNorm, self.advNetOutputNorm, 
+        self.mergedAdvNetwork = MergedAdvNetwork(self.advNetItorchutNorm.to(device), self.advNetOutputNorm.to(device), 
                                 model_path="../trained/ves_merged_adv.pth", 
                                 device = device)
         
         # Normalization values for relaxation network
         self.relaxNetItorchutNorm = relaxNetItorchutNorm
         self.relaxNetOutputNorm = relaxNetOutputNorm
-        self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetItorchutNorm, self.relaxNetOutputNorm, 
+        self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetItorchutNorm.to(device), self.relaxNetOutputNorm.to(device), 
                                 model_path="../trained/ves_relax_DIFF_June8_625k_dt1e-5.pth", 
                                 device = device)
         
         # Normalization values for near field networks
         self.nearNetItorchutNorm = nearNetItorchutNorm
         self.nearNetOutputNorm = nearNetOutputNorm
-        self.nearNetwork = MergedNearFourierNetwork(self.nearNetItorchutNorm, self.nearNetOutputNorm,
+        self.nearNetwork = MergedNearFourierNetwork(self.nearNetItorchutNorm.to(device), self.nearNetOutputNorm.to(device),
                                 model_path="../trained/ves_merged_nearFourier.pth",
                                 device = device)
         
         # Normalization values for tension-self network
         self.tenSelfNetItorchutNorm = tenSelfNetItorchutNorm
         self.tenSelfNetOutputNorm = tenSelfNetOutputNorm
-        self.tenSelfNetwork = TenSelfNetwork(self.tenSelfNetItorchutNorm, self.tenSelfNetOutputNorm, 
+        self.tenSelfNetwork = TenSelfNetwork(self.tenSelfNetItorchutNorm.to(device), self.tenSelfNetOutputNorm.to(device), 
                                 model_path="../trained/ves_selften.pth", 
                                 device = device)
         
         # Normalization values for tension-advection networks
         self.tenAdvNetItorchutNorm = tenAdvNetItorchutNorm
         self.tenAdvNetOutputNorm = tenAdvNetOutputNorm
-        self.tenAdvNetwork = MergedTenAdvNetwork(self.tenAdvNetItorchutNorm, self.tenAdvNetOutputNorm, 
+        self.tenAdvNetwork = MergedTenAdvNetwork(self.tenAdvNetItorchutNorm.to(device), self.tenAdvNetOutputNorm.to(device), 
                                 model_path="../trained/ves_merged_advten.pth", 
                                 device = device)
     
@@ -662,7 +662,7 @@ class MLARM_manyfree_py:
 
         elif option == "kdtree":
             all_points = torch.concat((xvesicle.T.reshape(-1,1), yvesicle.T.reshape(-1,1)), dim=1)
-            tree = scipy.spatial.KDTree(all_points)
+            tree = KDTree(all_points)
             all_nbrs = tree.query_ball_point(all_points, max_layer_dist, return_sorted=True)
             # all_nbrs = np.array(all_nbrs)
 
