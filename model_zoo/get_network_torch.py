@@ -38,8 +38,8 @@ class RelaxNetwork:
 
         x_mean = self.input_param[0]
         x_std = self.input_param[1]
-        y_mean = self.out_param[2]
-        y_std = self.out_param[3]
+        y_mean = self.input_param[2]
+        y_std = self.input_param[3]
         
         Xin[:N] = (Xin[:N] - x_mean) / x_std
         Xin[N:] = (Xin[N:] - y_mean) / y_std
@@ -134,8 +134,8 @@ class MergedAdvNetwork:
 
         x_mean = self.input_param[s-2:t-1][:, 0]
         x_std = self.input_param[s-2:t-1][:, 1]
-        y_mean = self.out_param[s-2:t-1][:, 2]
-        y_std = self.out_param[s-2:t-1][:, 3]
+        y_mean = self.input_param[s-2:t-1][:, 2]
+        y_std = self.input_param[s-2:t-1][:, 3]
 
         coords = torch.zeros((nv, 2*rep, 128), dtype=torch.float64).to(device)
         coords[:, :rep, :] = ((multiX[:N] - x_mean) / x_std).permute(1,2,0)
@@ -292,12 +292,11 @@ class TenSelfNetwork:
         return tenPred
     
     def forward(self, Xin):
-        input = self.preProcess(Xin)
+        input = self.preProcess(Xin.to(self.device))
         with torch.no_grad():
             pred = self.model(input)
         tenPredstand = self.postProcess(pred)
         return tenPredstand
-
 
 class MergedTenAdvNetwork:
     '''
@@ -346,7 +345,7 @@ class MergedTenAdvNetwork:
     def preProcess(self, Xin):
         # Normalize input
         nv = Xin.shape[-1]
-        input = Xin[:, None].repeat_interleave(127, dim=-1).reshape(2, 128, nv, 127)
+        input = Xin[:, None].repeat_interleave(127, dim=-1).reshape(2, 128, nv, 127).to(self.device)
         # use broadcasting
         input[0] = (input[0] - self.input_param[:, 0])/self.input_param[:, 1]
         input[1] = (input[1] - self.input_param[:, 2])/self.input_param[:, 3]
@@ -424,7 +423,7 @@ class MergedNearFourierNetwork:
     def preProcess(self, Xin):
         # Normalize input
         nv = Xin.shape[-1]
-        input = Xin[:, None].repeat_interleave(128, dim=-1).reshape(2, 128, nv, 128)
+        input = Xin[:, None].repeat_interleave(128, dim=-1).reshape(2, 128, nv, 128).to(self.device)
         # use broadcasting
         input[0] = (input[0] - self.input_param[:, 0])/self.input_param[:, 1]
         input[1] = (input[1] - self.input_param[:, 2])/self.input_param[:, 3]
@@ -446,7 +445,7 @@ class MergedNearFourierNetwork:
         # use broadcasting
         out = out * self.out_param[:, 1] + self.out_param[:, 0]
 
-        reshaped_out =  out.permute(1, 0, 2, 3) # shape: (nv, 128, num_modes=128, 12)
+        reshaped_out =  out.permute(1, 0, 2, 3).cpu() # shape: (nv, 128, num_modes=128, 12)
         # after postprocess, output velx_real, vely_real, velx_imag, vely_imag
         return reshaped_out[..., :3], reshaped_out[..., 3:6], reshaped_out[..., 6:9], reshaped_out[..., 9:]
         

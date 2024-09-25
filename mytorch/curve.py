@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 torch.set_default_dtype(torch.float64)
 from scipy.interpolate import CubicSpline
 from scipy.optimize import minimize
@@ -74,7 +75,7 @@ class Curve:
         IA = torch.zeros(nv, dtype=torch.float64)
         # % compute inclination angle on an upsampled grid
         N = X.shape[0] // 2
-        modes = torch.concatenate((torch.arange(0, N // 2), [0], torch.arange(-N // 2 + 1, 0))).double()
+        modes = torch.concatenate((torch.arange(0, N // 2), torch.tensor([0]), torch.arange(-N // 2 + 1, 0))).double()
         
         tempX = torch.zeros_like(X)
         tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - torch.mean(X[:X.shape[0] // 2], dim=0)
@@ -99,11 +100,12 @@ class Curve:
             J21 = 0.25 * torch.sum(rdotn * (-y * x) * jac) * 2 * torch.pi / N
             J22 = 0.25 * torch.sum(rdotn * (rho2 - y * y) * jac) * 2 * torch.pi / N
 
-            J = torch.array([[J11, J12], [J21, J22]])
-            # Shan
+            J = torch.tensor([[J11, J12], [J21, J22]])
+            
             D, V = torch.linalg.eig(J)
             ind = torch.argmin(torch.abs((D)))
             # % make sure that the first components of e-vectors have the same sign
+            V = torch.real(V)
             if V[1, ind] < 0:
                 V[:, ind] *= -1
             # % since V(2,ind) > 0, this will give angle between [0, pi]
@@ -201,6 +203,8 @@ class Curve:
         # %   X = boundary(64,'nv',3,'curly');
         # %   c = curve(X);
         # %   [rv A L] = c.geomProp(X);
+        if isinstance(X, np.ndarray):
+            X = torch.from_numpy(X)
         
         x, y = self.getXY(X)
         N = x.shape[0]
@@ -268,11 +272,11 @@ class Curve:
 
         options = {'maxiter': 3000, 'disp': False}
 
-        Xnew = torch.zeros_like(X)
-
+        Xnew = np.zeros_like(X)
+        X = X.numpy()
         for k in range(X.shape[1]):
             def minFun(z):
-                return torch.mean((z - X[:, k]) ** 2)
+                return np.mean((z - X[:, k]) ** 2)
 
             cons = ({'type': 'eq', 'fun': lambda z: self.nonlcon(z, area0[k], length0[k])})
             res = minimize(minFun, X[:, k], constraints=cons, options=options)
@@ -283,7 +287,7 @@ class Curve:
                 print('Correction scheme failed, do not correct at this step')
                 Xnew[:, k] = X[:,k]
 
-        return Xnew
+        return torch.from_numpy(Xnew)
 
     def nonlcon(self, X, a0, l0):
         """Non-linear constraints required by minimize."""
@@ -301,8 +305,8 @@ class Curve:
 
         Xnew = torch.zeros_like(X)
         for k in range(X.shape[1]):
-            initMean = torch.array([torch.mean(Xorg[:Xorg.shape[0] // 2, k]), torch.mean(Xorg[Xorg.shape[0] // 2:, k])])
-            newMean = torch.array([torch.mean(X[:X.shape[0] // 2, k]), torch.mean(X[X.shape[0] // 2:, k])])
+            initMean = torch.tensor([torch.mean(Xorg[:Xorg.shape[0] // 2, k]), torch.mean(Xorg[Xorg.shape[0] // 2:, k])])
+            newMean = torch.tensor([torch.mean(X[:X.shape[0] // 2, k]), torch.mean(X[X.shape[0] // 2:, k])])
 
             initAngle = self.getIncAngle(Xorg[:, [k]])
             newAngle = self.getIncAngle(X[:, [k]])
@@ -311,7 +315,7 @@ class Curve:
                 newAngle2 = newAngle - torch.pi
             else:
                 newAngle2 = newAngle + torch.pi
-            newAngles = torch.array([newAngle, newAngle2])
+            newAngles = torch.tensor([newAngle, newAngle2])
             diffAngles = torch.abs(initAngle - newAngles)
             id = torch.argmin(diffAngles)
             newAngle = newAngles[id]
@@ -395,6 +399,8 @@ class Curve:
 
         # Interpolate to obtain equispaced points
         dx = torch.diff(z1)
+        dx = abs(dx)
+        z1 = torch.cumsum(torch.concat((z1[[0]], dx)), dim=0)
         if torch.any(dx <= 0):
             print(dx)
             print("haha")

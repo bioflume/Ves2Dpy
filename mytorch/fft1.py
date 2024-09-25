@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 torch.set_default_dtype(torch.float64)
 import matplotlib.pyplot as plt
 
@@ -138,7 +139,10 @@ class fft1:
         """
         # N = f.shape[0]
         # IK = torch.concatenate((torch.arange(0, N // 2), [0], torch.arange(-N // 2 + 1, 0))) * 1j
-        df = torch.real(torch.fft.ifft(IK * torch.fft.fft(f, dim=0), dim=0))
+        if isinstance(f, np.ndarray):
+            df = np.real(np.fft.ifft(IK.numpy() * np.fft.fft(f, axis=0), axis=0))
+        else:
+            df = torch.real(torch.fft.ifft(IK * torch.fft.fft(f, dim=0), dim=0))
         return df
 
 
@@ -181,8 +185,8 @@ class fft1:
         FF1, FFI1 = fft1.fourierInt(N)
         FF2, FFI2 = fft1.fourierInt(Nup)
 
-        R = torch.dot(FFI1, torch.hstack((torch.zeros((N, (Nup - N) // 2)), torch.eye(N), torch.zeros((N, (Nup - N) // 2))))) \
-            .dot(FF2)
+        R = torch.matmul(FFI1, torch.hstack((torch.zeros((N, (Nup - N) // 2)), torch.eye(N), torch.zeros((N, (Nup - N) // 2))))*1j) \
+            .matmul(FF2)
         R = torch.real(R)
         P = R.T * Nup / N
         return R, P
@@ -194,9 +198,8 @@ class fft1:
         # (FF) and a matrix that takes in the Fourier coefficients and returns
         # the function values (FFI)
 
-        theta = torch.arange(N).reshape(-1, 1) * 2 * torch.pi / N
-        theta = theta.double()
-        modes = torch.concatenate(([-N / 2], torch.arange(-N / 2 + 1, N / 2))).double()
+        theta = torch.arange(N).reshape(-1) * 2 * torch.pi / N
+        modes = torch.concatenate((torch.tensor([-N / 2]), torch.arange(-N / 2 + 1, N / 2))).double()
         FF = torch.exp(-1j * torch.outer(modes, theta)) / N
 
         if True:  # nargout > 1
