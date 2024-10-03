@@ -6,14 +6,16 @@ sys.path.append("..")
 from collections import defaultdict
 from capsules import capsules
 # from rayCasting import ray_casting
+from filter import upsThenFilterShape
 from scipy.spatial import KDTree
 from scipy.interpolate import RBFInterpolator as scipyinterp
 from model_zoo.get_network_torch import RelaxNetwork, TenSelfNetwork, MergedAdvNetwork, MergedTenAdvNetwork, MergedNearFourierNetwork
 import time
+import mat73
 
 class MLARM_py:
-    def __init__(self, dt, vinf, oc, advNetItorchutNorm, advNetOutputNorm,
-                 relaxNetItorchutNorm, relaxNetOutputNorm, device):
+    def __init__(self, dt, vinf, oc, advNetInputNorm, advNetOutputNorm,
+                 relaxNetInputNorm, relaxNetOutputNorm, device):
         self.dt = dt  # time step size
         self.vinf = vinf  # background flow (analytic -- itorchut as function of vesicle config)
         self.oc = oc  # curve class
@@ -21,16 +23,16 @@ class MLARM_py:
         self.device = device
         
         # Normalization values for advection (translation) networks
-        self.advNetItorchutNorm = advNetItorchutNorm
+        self.advNetInputNorm = advNetInputNorm
         self.advNetOutputNorm = advNetOutputNorm
-        self.mergedAdvNetwork = MergedAdvNetwork(self.advNetItorchutNorm.to(device), self.advNetOutputNorm.to(device), 
+        self.mergedAdvNetwork = MergedAdvNetwork(self.advNetInputNorm.to(device), self.advNetOutputNorm.to(device), 
                                 model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_adv.pth", 
                                 device = device)
         
         # Normalization values for relaxation network
-        self.relaxNetItorchutNorm = relaxNetItorchutNorm
+        self.relaxNetInputNorm = relaxNetInputNorm
         self.relaxNetOutputNorm = relaxNetOutputNorm
-        self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetItorchutNorm.to(device), self.relaxNetOutputNorm.to(device), 
+        self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetInputNorm.to(device), self.relaxNetOutputNorm.to(device), 
                                 model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_relax_DIFF_June8_625k_dt1e-5.pth", 
                                 device = device)
     
@@ -666,10 +668,11 @@ class MLARM_py:
 
 
 class MLARM_manyfree_py:
-    def __init__(self, dt, vinf, oc, advNetItorchutNorm, advNetOutputNorm,
-                 relaxNetItorchutNorm, relaxNetOutputNorm, nearNetItorchutNorm,
-                 nearNetOutputNorm, tenSelfNetItorchutNorm, tenSelfNetOutputNorm,
-                 tenAdvNetItorchutNorm, tenAdvNetOutputNorm, device):
+    def __init__(self, dt, vinf, oc, advNetInputNorm, advNetOutputNorm,
+                 relaxNetInputNorm, relaxNetOutputNorm, 
+                 nearNetInputNorm, nearNetOutputNorm, 
+                 tenSelfNetInputNorm, tenSelfNetOutputNorm,
+                 tenAdvNetInputNorm, tenAdvNetOutputNorm, device):
         self.dt = dt  # time step size
         self.vinf = vinf  # background flow (analytic -- itorchut as function of vesicle config)
         self.oc = oc  # curve class
@@ -677,37 +680,37 @@ class MLARM_manyfree_py:
         self.device = device
         
         # Normalization values for advection (translation) networks
-        self.advNetItorchutNorm = advNetItorchutNorm
+        self.advNetInputNorm = advNetInputNorm
         self.advNetOutputNorm = advNetOutputNorm
-        self.mergedAdvNetwork = MergedAdvNetwork(self.advNetItorchutNorm.to(device), self.advNetOutputNorm.to(device), 
+        self.mergedAdvNetwork = MergedAdvNetwork(self.advNetInputNorm.to(device), self.advNetOutputNorm.to(device), 
                                 model_path="../trained/ves_merged_adv.pth", 
                                 device = device)
         
         # Normalization values for relaxation network
-        self.relaxNetItorchutNorm = relaxNetItorchutNorm
+        self.relaxNetInputNorm = relaxNetInputNorm
         self.relaxNetOutputNorm = relaxNetOutputNorm
-        self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetItorchutNorm.to(device), self.relaxNetOutputNorm.to(device), 
+        self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetInputNorm.to(device), self.relaxNetOutputNorm.to(device), 
                                 model_path="../trained/ves_relax_DIFF_June8_625k_dt1e-5.pth", 
                                 device = device)
         
         # Normalization values for near field networks
-        self.nearNetItorchutNorm = nearNetItorchutNorm
+        self.nearNetInputNorm = nearNetInputNorm
         self.nearNetOutputNorm = nearNetOutputNorm
-        self.nearNetwork = MergedNearFourierNetwork(self.nearNetItorchutNorm.to(device), self.nearNetOutputNorm.to(device),
+        self.nearNetwork = MergedNearFourierNetwork(self.nearNetInputNorm.to(device), self.nearNetOutputNorm.to(device),
                                 model_path="../trained/ves_merged_nearFourier.pth",
                                 device = device)
         
         # Normalization values for tension-self network
-        self.tenSelfNetItorchutNorm = tenSelfNetItorchutNorm
+        self.tenSelfNetInputNorm = tenSelfNetInputNorm
         self.tenSelfNetOutputNorm = tenSelfNetOutputNorm
-        self.tenSelfNetwork = TenSelfNetwork(self.tenSelfNetItorchutNorm.to(device), self.tenSelfNetOutputNorm.to(device), 
-                                model_path="../trained/ves_selften.pth", 
+        self.tenSelfNetwork = TenSelfNetwork(self.tenSelfNetInputNorm.to(device), self.tenSelfNetOutputNorm.to(device), 
+                                model_path="../trained/ves_selften_new.pth", #"../trained/ves_selften.pth", 
                                 device = device)
         
         # Normalization values for tension-advection networks
-        self.tenAdvNetItorchutNorm = tenAdvNetItorchutNorm
+        self.tenAdvNetInputNorm = tenAdvNetInputNorm
         self.tenAdvNetOutputNorm = tenAdvNetOutputNorm
-        self.tenAdvNetwork = MergedTenAdvNetwork(self.tenAdvNetItorchutNorm.to(device), self.tenAdvNetOutputNorm.to(device), 
+        self.tenAdvNetwork = MergedTenAdvNetwork(self.tenAdvNetInputNorm.to(device), self.tenAdvNetOutputNorm.to(device), 
                                 model_path="../trained/ves_merged_advten.pth", 
                                 device = device)
     
@@ -731,34 +734,40 @@ class MLARM_manyfree_py:
         # Calculate velocity induced by vesicles on each other due to elastic force
         # use neural networks to calculate near-singular integrals
         farFieldtracJump = self.computeStokesInteractions(vesicle, tracJump, oc)
+        farFieldtracJump = upsThenFilterShape(farFieldtracJump, 4*N, 16)
 
         # Solve for tension
         vBackSolve = self.invTenMatOnVback(Xold, vback + farFieldtracJump)
         selfBendSolve = self.invTenMatOnSelfBend(Xold)
         tenNew = -(vBackSolve + selfBendSolve)
+        tracJump = upsThenFilterShape(tenNew, 4*N, 16)
 
         # update the elastic force with the new tension
         fTen = vesicle.tensionTerm(tenNew)
         tracJump = fBend + fTen
+        tracJump = upsThenFilterShape(tracJump, 4*N, 16)
 
         # Calculate far-field again and correct near field before advection
         # use neural networks to calculate near-singular integrals
         farFieldtracJump = self.computeStokesInteractions(vesicle, tracJump, oc)
+        farFieldtracJump = upsThenFilterShape(farFieldtracJump, 4*N, 16)
 
         # Total background velocity
         vbackTotal = vback + farFieldtracJump
 
         # Compute the action of dt*(1-M) on Xold
         Xadv = self.translateVinfwTorch(Xold, vbackTotal)
-
+        Xadv = upsThenFilterShape(Xadv, 4*N, 16)
         XadvC = oc.correctAreaAndLength(Xadv, self.area0, self.len0)
         Xadv = oc.alignCenterAngle(Xadv, XadvC)
+        
 
         # Compute the action of relax operator on Xold + Xadv
         Xnew = self.relaxWTorchNet(Xadv)
+        Xnew = upsThenFilterShape(Xnew, 4*N, 16)
         XnewC = oc.correctAreaAndLength(Xnew, self.area0, self.len0)
         Xnew = oc.alignCenterAngle(Xnew, XnewC)
-
+        
         return Xnew, tenNew
 
     def predictNearLayersWTorchNet(self, X, tracJump):
@@ -1127,7 +1136,6 @@ class MLARM_manyfree_py:
 
     def invTenMatOnVback(self, X, vinf):
         # Approximate inv(Div*G*Ten)*Div*vExt 
-        # itorchut X is non-standardized
         
         # number of vesicles
         nv = X.shape[1]
@@ -1147,7 +1155,7 @@ class MLARM_manyfree_py:
 
         input = self.tenAdvNetwork.preProcess(Xstand)
         Xpredict = self.tenAdvNetwork.forward(input)
-        out = self.tenAdvNetwork.postProcess(Xpredict)
+        out = self.tenAdvNetwork.postProcess(Xpredict) # shape: (127, nv, 2, 128)
 
         # Approximate the multiplication Z = inv(DivGT)DivPhi_k
         Z1 = torch.zeros((N, N, nv), dtype=torch.float64)
@@ -1155,7 +1163,7 @@ class MLARM_manyfree_py:
 
         for ij in range(len(modeList) - 1):
             imode = modeList[ij + 1]  # mode index, skipping the first mode
-            pred = out[ij]  # size(pred) = [1 2 128]
+            pred = out[ij]  # size(pred) = [nv 2 128]
 
             for k in range(nv):
                 Z1[:, imode, k] = pred[k, 0, :]
@@ -1176,7 +1184,8 @@ class MLARM_manyfree_py:
             # Destandardize the multiplication
             MVinf = torch.zeros_like(MVinfStand)
             MVinf[sortIdx[k]] = MVinfStand 
-            vBackSolve[:, k] = self.rotationOperator(MVinf, -rotate[k], [0, 0])
+            # vBackSolve[:, k] = self.rotationOperator(MVinf, -rotate[k], [0, 0])
+            vBackSolve[:, k] = MVinf
 
         return vBackSolve
 
@@ -1322,8 +1331,10 @@ class MLARM_manyfree_py:
         oc = self.oc
         X = Xin[:]
         # % Equally distribute points in arc-length
-        for w in range(10):
+        for w in range(5):
             X, _, _ = oc.redistributeArcLength(X)
+            
+        # X = oc.alignCenterAngle(Xin,X)
         # % standardize angle, center, scaling and point order
         trans, rotate, rotCenter, scaling, multi_sortIdx = self.referenceValues(X)
         
