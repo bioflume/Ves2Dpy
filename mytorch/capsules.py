@@ -48,7 +48,7 @@ class capsules:
         # ordering of the fourier modes.  It is faster to compute once here and
         # pass it around to the fft differentitation routine
         f = fft1(self.N)
-        self.IK = f.modes(self.N, self.nv)
+        self.IK = f.modes(self.N, self.nv).to(self.X.device)
 
     def tracJump(self, f, sigma):
         """
@@ -72,6 +72,9 @@ class capsules:
         % x_{s})_{s}
         """
         c = Curve()
+        # print(sig.device)
+        # print(self.IK.device)
+        # print(self.xt.device)
         return torch.vstack([c.arcDeriv(sig * self.xt[:self.N, :], 1, self.isa, self.IK),
                           c.arcDeriv(sig * self.xt[self.N:, :], 1, self.isa, self.IK)])
 

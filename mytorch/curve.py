@@ -29,7 +29,7 @@ class Curve:
     def setXY(self, x, y):
         """Set the [x,y] component of vector V on the curve."""
         N = x.shape[0]
-        V = torch.zeros(2 * N, x.shape[1], dtype=torch.float64)
+        V = torch.zeros(2 * N, x.shape[1], dtype=torch.float64, device=x.device)
         V[:N, :] = x
         V[N:, :] = y
         return V
@@ -112,6 +112,7 @@ class Curve:
             IA[k] = torch.arctan2(V[1, ind], V[0, ind])
 
         return IA
+    
     def getPrincAxesGivenCentroid(self, X, center):
         """Find the principal axes given centroid.
         % GK: THIS IS NEEDED IN STANDARDIZING VESICLE SHAPES 
@@ -166,7 +167,7 @@ class Curve:
         N = x.shape[0]
         nv = x.shape[1]
         f = fft1(N)
-        IK = f.modes(N, nv)
+        IK = f.modes(N, nv).to(X.device)
         Dx = f.diffFT(x, IK)
         Dy = f.diffFT(y, IK)
         return Dx, Dy
@@ -187,9 +188,9 @@ class Curve:
 
         f = fft1(N)
         IK = f.modes(N, nv)
-        DDx = self.arcDeriv(Dx, 1, torch.ones((N, nv)), IK)
+        DDx = self.arcDeriv(Dx, 1, torch.ones((N, nv), device=X.device), IK.to(X.device))
         
-        DDy = self.arcDeriv(Dy, 1, torch.ones((N, nv)), IK)
+        DDy = self.arcDeriv(Dy, 1, torch.ones((N, nv), device=X.device), IK.to(X.device))
         curvature = (Dx * DDy - Dy * DDx) / (jacobian ** 3)
 
         return jacobian, tangent, curvature
@@ -272,8 +273,10 @@ class Curve:
 
         options = {'maxiter': 3000, 'disp': False}
 
+        X = X.cpu().numpy()
+        area0 = area0.cpu().numpy()
+        length0 = length0.cpu().numpy()
         Xnew = np.zeros_like(X)
-        X = X.numpy()
         for k in range(X.shape[1]):
             def minFun(z):
                 return np.mean((z - X[:, k]) ** 2)
@@ -333,7 +336,7 @@ class Curve:
 
         return Xnew
 
-    def redistributeArcLength(self, X, u=None, sigma=None):
+    def redistributeArcLength(self, X):
         """Redistribute the vesicle shape equispaced in arclength."""
         # % [X,u,sigma] = redistributeArcLength(o,X,u,sigma) redistributes
         # % the vesicle shape eqiuspaced in arclength and adjusts the tension and
@@ -347,18 +350,24 @@ class Curve:
         tol = 1e-10
         # u = None
         # sigma = None
-        X_out = torch.zeros_like(X)
+        X_out = torch.zeros_like(X, device=X.device)
+        allGood = True
 
         for k in range(nv):
             if torch.linalg.norm(jac[:, k] - torch.mean(jac[:, k]), ord=torch.inf) > tol * torch.mean(jac[:, k]):
+                allGood = False
                 theta, _ = self.arcLengthParameter(X[:N, k], X[N:, k])
+                theta = torch.from_numpy(theta).to(X.device)
                 # print(theta)
                 zX = X[:N, k] + 1j * X[N:, k]
                 zXh = torch.fft.fft(zX) / N
-                zX = torch.zeros(N, dtype=torch.complex128)
+                zX = torch.zeros(N, dtype=torch.complex128, device=X.device)
                 for j in range(N):
                     zX += zXh[j] * torch.exp(1j * modes[j] * theta)
                 X_out[:, [k]] = self.setXY(torch.real(zX)[:,None], torch.imag(zX)[:,None])
+            else:
+                X_out[:, [k]] = X[:, [k]]
+                
                 # if u is not None:
                 #     zu = u[:N, k] + 1j * u[N:, k]
                 #     zuh = torch.fft.fft(zu) / N
@@ -370,7 +379,7 @@ class Curve:
                 #         sigma[:, k] += sigmah[j] * torch.exp(1j * modes[j] * theta)
                 #     sigma = torch.real(sigma)
                 #     u[:, k] = self.setXY(torch.real(zu), torch.imag(zu))
-        return X_out, u, sigma
+        return X_out, allGood
 
     def arcLengthParameter(o, x, y):
         """
@@ -379,7 +388,7 @@ class Curve:
         % arclength
         """
         N = len(x)
-        t = torch.arange(N, dtype=torch.float64) * 2 * torch.pi / N
+        t = torch.arange(N, dtype=torch.float64, device=x.device) * 2 * torch.pi / N
         _, _, length = o.geomProp(torch.concatenate((x, y))[:,None])
         # Find total perimeter
         
@@ -390,21 +399,22 @@ class Curve:
         modes = -1.0j / torch.hstack([torch.tensor([1e-10]).double(), (torch.arange(1,N // 2)), torch.tensor([1e-10]).double(), (torch.arange(-N//2+1,0))])  # FFT modes
         modes[0] = 0
         modes[N // 2] = 0
+        modes = modes.to(x.device)
         
         arc_length = torch.real(torch.fft.ifft(modes * arch) - torch.sum(modes * arch) / N + arch[0] * t / N)
         # print(arc_length)
         z1 = torch.hstack([arc_length[-7:] - length, arc_length, arc_length[:7] + length])
-        z2 = torch.hstack([t[-7:] - 2 * torch.pi, t, t[:7] + 2 * torch.pi])
+        z2 = torch.hstack([t[-7:] - 2 * torch.pi, t, t[:7] + 2 * torch.pi]).cpu().numpy()
         # % put in some overlap to account for periodicity
 
         # Interpolate to obtain equispaced points
         dx = torch.diff(z1)
         dx = abs(dx)
-        z1 = torch.cumsum(torch.concat((z1[[0]], dx)), dim=0)
+        z1 = torch.cumsum(torch.concat((z1[[0]], dx)), dim=0).cpu().numpy()
         if torch.any(dx <= 0):
             print(dx)
             print("haha")
-        theta = CubicSpline(z1, z2)(torch.arange(N) * length / N)
+        theta = CubicSpline(z1, z2)(torch.arange(N).cpu() * length.cpu() / N)
 
         return theta, arc_length
 

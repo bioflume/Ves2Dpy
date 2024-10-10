@@ -13,273 +13,273 @@ from model_zoo.get_network_torch import RelaxNetwork, TenSelfNetwork, MergedAdvN
 import time
 import mat73
 
-class MLARM_py:
-    def __init__(self, dt, vinf, oc, advNetInputNorm, advNetOutputNorm,
-                 relaxNetInputNorm, relaxNetOutputNorm, device):
-        self.dt = dt  # time step size
-        self.vinf = vinf  # background flow (analytic -- itorchut as function of vesicle config)
-        self.oc = oc  # curve class
-        self.kappa = 1  # bending stiffness is 1 for our simulations
-        self.device = device
+# class MLARM_py:
+#     def __init__(self, dt, vinf, oc, advNetInputNorm, advNetOutputNorm,
+#                  relaxNetInputNorm, relaxNetOutputNorm, device):
+#         self.dt = dt  # time step size
+#         self.vinf = vinf  # background flow (analytic -- itorchut as function of vesicle config)
+#         self.oc = oc  # curve class
+#         self.kappa = 1  # bending stiffness is 1 for our simulations
+#         self.device = device
         
-        # Normalization values for advection (translation) networks
-        self.advNetInputNorm = advNetInputNorm
-        self.advNetOutputNorm = advNetOutputNorm
-        self.mergedAdvNetwork = MergedAdvNetwork(self.advNetInputNorm.to(device), self.advNetOutputNorm.to(device), 
-                                model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_adv.pth", 
-                                device = device)
+#         # Normalization values for advection (translation) networks
+#         self.advNetInputNorm = advNetInputNorm
+#         self.advNetOutputNorm = advNetOutputNorm
+#         self.mergedAdvNetwork = MergedAdvNetwork(self.advNetInputNorm.to(device), self.advNetOutputNorm.to(device), 
+#                                 model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_adv.pth", 
+#                                 device = device)
         
-        # Normalization values for relaxation network
-        self.relaxNetInputNorm = relaxNetInputNorm
-        self.relaxNetOutputNorm = relaxNetOutputNorm
-        self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetInputNorm.to(device), self.relaxNetOutputNorm.to(device), 
-                                model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_relax_DIFF_June8_625k_dt1e-5.pth", 
-                                device = device)
+#         # Normalization values for relaxation network
+#         self.relaxNetInputNorm = relaxNetInputNorm
+#         self.relaxNetOutputNorm = relaxNetOutputNorm
+#         self.relaxNetwork = RelaxNetwork(self.dt, self.relaxNetInputNorm.to(device), self.relaxNetOutputNorm.to(device), 
+#                                 model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_relax_DIFF_June8_625k_dt1e-5.pth", 
+#                                 device = device)
     
-    def time_step(self, Xold):
-        # % take a time step with neural networks
-        oc = self.oc
-        # background velocity on vesicles
-        vback = torch.from_numpy(self.vinf(Xold))
+#     def time_step(self, Xold):
+#         # % take a time step with neural networks
+#         oc = self.oc
+#         # background velocity on vesicles
+#         vback = torch.from_numpy(self.vinf(Xold))
 
-        # Compute the action of dt*(1-M) on Xold
-        # tStart = time.time()
-        Xadv = self.translateVinfwTorch(Xold, vback)
-        # tEnd = time.time()
-        # print(f'Solving ADV takes {tEnd - tStart} sec.')
+#         # Compute the action of dt*(1-M) on Xold
+#         # tStart = time.time()
+#         Xadv = self.translateVinfwTorch(Xold, vback)
+#         # tEnd = time.time()
+#         # print(f'Solving ADV takes {tEnd - tStart} sec.')
 
-        # Correct area and length
-        # tStart = time.time()
-        XadvC = oc.correctAreaAndLength(Xadv, self.area0, self.len0)
-        Xadv = oc.alignCenterAngle(Xadv, XadvC)
-        # tEnd = time.time()
-        # print(f'Solving correction takes {tEnd - tStart} sec.')
+#         # Correct area and length
+#         # tStart = time.time()
+#         XadvC = oc.correctAreaAndLength(Xadv, self.area0, self.len0)
+#         Xadv = oc.alignCenterAngle(Xadv, XadvC)
+#         # tEnd = time.time()
+#         # print(f'Solving correction takes {tEnd - tStart} sec.')
 
-        # Compute the action of relax operator on Xold + Xadv
-        # tStart = time.time()
-        Xnew = self.relaxWTorchNet(Xadv)
-        # tEnd = time.time()
-        # print(f'Solving RELAX takes {tEnd - tStart} sec.')
+#         # Compute the action of relax operator on Xold + Xadv
+#         # tStart = time.time()
+#         Xnew = self.relaxWTorchNet(Xadv)
+#         # tEnd = time.time()
+#         # print(f'Solving RELAX takes {tEnd - tStart} sec.')
 
-        # Correct area and length
-        # tStart = time.time()
-        XnewC = oc.correctAreaAndLength(Xnew, self.area0, self.len0)
-        Xnew = oc.alignCenterAngle(Xnew, XnewC)
-        # tEnd = time.time()
-        # print(f'Solving correction takes {tEnd - tStart} sec.')
+#         # Correct area and length
+#         # tStart = time.time()
+#         XnewC = oc.correctAreaAndLength(Xnew, self.area0, self.len0)
+#         Xnew = oc.alignCenterAngle(Xnew, XnewC)
+#         # tEnd = time.time()
+#         # print(f'Solving correction takes {tEnd - tStart} sec.')
 
-        return Xnew
+#         return Xnew
     
-    def translateVinfwTorch(self, Xold, vinf):
-        # Xitorchut is equally distributed in arc-length
-        # Xold as well. So, we add up coordinates of the same points.
-        N = Xold.shape[0] // 2
-        nv = Xold.shape[1]
+#     def translateVinfwTorch(self, Xold, vinf):
+#         # Xitorchut is equally distributed in arc-length
+#         # Xold as well. So, we add up coordinates of the same points.
+#         N = Xold.shape[0] // 2
+#         nv = Xold.shape[1]
 
-        # If we only use some modes
-        # modes = torch.concatenate((torch.arange(0, N//2), torch.arange(-N//2, 0)))
-        # modesInUse = 16
-        # mode_list = torch.where(torch.abs(modes) <= modes_in_use)[0]
-        # mode_list = [i for i in range(modesInUse)] + [128-i for i in range(modesInUse, 0, -1)]
-        mode_list = [i for i in range(128)]
-        # Standardize itorchut
-        # Xstand = torch.zeros_like(Xold)
-        # scaling = torch.zeros(nv)
-        # rotate = torch.zeros(nv)
-        # rot_cent = torch.zeros((2, nv))
-        # trans = torch.zeros((2, nv))
-        # sort_idx = torch.zeros((N, nv), dtype=int)
-        # for k in range(nv):
-        #     (Xstand[:, k], scaling[k], rotate[k], 
-        #     rot_cent[:, k], trans[:, k], sort_idx[:, k]) = self.standardization_step(Xold[:, k], N)
-        Xstand, scaling, rotate, rotCent, trans, sortIdx = self.standardizationStep(Xold)
+#         # If we only use some modes
+#         # modes = torch.concatenate((torch.arange(0, N//2), torch.arange(-N//2, 0)))
+#         # modesInUse = 16
+#         # mode_list = torch.where(torch.abs(modes) <= modes_in_use)[0]
+#         # mode_list = [i for i in range(modesInUse)] + [128-i for i in range(modesInUse, 0, -1)]
+#         mode_list = [i for i in range(128)]
+#         # Standardize itorchut
+#         # Xstand = torch.zeros_like(Xold)
+#         # scaling = torch.zeros(nv)
+#         # rotate = torch.zeros(nv)
+#         # rot_cent = torch.zeros((2, nv))
+#         # trans = torch.zeros((2, nv))
+#         # sort_idx = torch.zeros((N, nv), dtype=int)
+#         # for k in range(nv):
+#         #     (Xstand[:, k], scaling[k], rotate[k], 
+#         #     rot_cent[:, k], trans[:, k], sort_idx[:, k]) = self.standardization_step(Xold[:, k], N)
+#         Xstand, scaling, rotate, rotCent, trans, sortIdx = self.standardizationStep(Xold)
 
-        # Normalize itorchut
-        # itorchut_list = []
-        # for imode in mode_list:
-        #     if imode != 0:
-        #         # itorchut_net = torch.zeros((nv, 2, 128)) # Shan: should be (nv, 2, 256)
-        #         x_mean, x_std, y_mean, y_std = in_param[imode-1]
-        #         # for k in range(nv):
-        #         #     itorchut_net[k, 0, :] = (Xstand[:N, k] - x_mean) / x_std
-        #         #     itorchut_net[k, 1, :] = (Xstand[N:, k] - y_mean) / y_std
-        #         itorchut_net = torch.concatenate(((Xstand[:N, None] - x_mean)/x_std, (Xstand[N:, None] - y_mean) / y_std), dim=0).T
-        #         # prepare fourier basis to be combined into itorchut
-        #         theta = torch.arange(N)/N*2*torch.pi
-        #         theta = theta.reshape(N,1)
-        #         bases = 1/N*torch.exp(1j*theta*torch.arange(N).reshape(1,N))
-        #         rr, ii = torch.real(bases[:, imode]), torch.imag(bases[:, imode])
-        #         basis = torch.concatenate((rr,ii)).reshape(1,1,256).repeat(nv, dim=0)
-        #         itorchut_net = torch.concatenate((itorchut_net, basis), dim=1)
-        #         itorchut_list.append(itorchut_net)
+#         # Normalize itorchut
+#         # itorchut_list = []
+#         # for imode in mode_list:
+#         #     if imode != 0:
+#         #         # itorchut_net = torch.zeros((nv, 2, 128)) # Shan: should be (nv, 2, 256)
+#         #         x_mean, x_std, y_mean, y_std = in_param[imode-1]
+#         #         # for k in range(nv):
+#         #         #     itorchut_net[k, 0, :] = (Xstand[:N, k] - x_mean) / x_std
+#         #         #     itorchut_net[k, 1, :] = (Xstand[N:, k] - y_mean) / y_std
+#         #         itorchut_net = torch.concatenate(((Xstand[:N, None] - x_mean)/x_std, (Xstand[N:, None] - y_mean) / y_std), dim=0).T
+#         #         # prepare fourier basis to be combined into itorchut
+#         #         theta = torch.arange(N)/N*2*torch.pi
+#         #         theta = theta.reshape(N,1)
+#         #         bases = 1/N*torch.exp(1j*theta*torch.arange(N).reshape(1,N))
+#         #         rr, ii = torch.real(bases[:, imode]), torch.imag(bases[:, imode])
+#         #         basis = torch.concatenate((rr,ii)).reshape(1,1,256).repeat(nv, dim=0)
+#         #         itorchut_net = torch.concatenate((itorchut_net, basis), dim=1)
+#         #         itorchut_list.append(itorchut_net)
 
 
-        # Xpredict = pyrunfile("advect_predict.py", "output_list", itorchut_shape=itorchut_list, num_ves=nv)
+#         # Xpredict = pyrunfile("advect_predict.py", "output_list", itorchut_shape=itorchut_list, num_ves=nv)
         
-        Xpredict = self.mergedAdvNetwork.forward(Xstand.to(self.device))
-        Xpredict = Xpredict.cpu()
-        # Approximate the multiplication M*(FFTBasis)
-        Z11r = torch.zeros((N, N, nv), dtype=torch.float64)
-        Z12r = torch.zeros_like(Z11r)
-        Z21r = torch.zeros_like(Z11r)
-        Z22r = torch.zeros_like(Z11r)
+#         Xpredict = self.mergedAdvNetwork.forward(Xstand.to(self.device))
+#         Xpredict = Xpredict.cpu()
+#         # Approximate the multiplication M*(FFTBasis)
+#         Z11r = torch.zeros((N, N, nv), dtype=torch.float64)
+#         Z12r = torch.zeros_like(Z11r)
+#         Z21r = torch.zeros_like(Z11r)
+#         Z22r = torch.zeros_like(Z11r)
 
-        for ij in range(len(mode_list) - 1):
-            imode = mode_list[ij + 1]
-            pred = Xpredict[ij]
+#         for ij in range(len(mode_list) - 1):
+#             imode = mode_list[ij + 1]
+#             pred = Xpredict[ij]
 
-            for k in range(nv):
-                Z11r[:, imode, k] = pred[k, 0, :N]
-                Z21r[:, imode, k] = pred[k, 0, N:]
-                Z12r[:, imode, k] = pred[k, 1, :N]
-                Z22r[:, imode, k] = pred[k, 1, N:]
+#             for k in range(nv):
+#                 Z11r[:, imode, k] = pred[k, 0, :N]
+#                 Z21r[:, imode, k] = pred[k, 0, N:]
+#                 Z12r[:, imode, k] = pred[k, 1, :N]
+#                 Z22r[:, imode, k] = pred[k, 1, N:]
 
-        # Take fft of the velocity (should be standardized velocity)
-        # only sort points and rotate to pi/2 (no translation, no scaling)
-        Xnew = torch.zeros_like(Xold)
-        vinf_stand = self.standardize(vinf, torch.zeros((2,nv), dtype=torch.float64), rotate, torch.zeros((2,nv), dtype=torch.float64), 1, sortIdx)
-        z = vinf_stand[:N] + 1j * vinf_stand[N:]
-        zh = torch.fft.fft(z, dim=0)
-        V1, V2 = torch.real(zh), torch.imag(zh)
-        MVinf_stand = torch.vstack((torch.einsum('NiB,iB ->NB', Z11r, V1) + torch.einsum('NiB,iB ->NB', Z12r, V2),
-                               torch.einsum('NiB,iB ->NB', Z21r, V1) + torch.einsum('NiB,iB ->NB', Z22r, V2)))
+#         # Take fft of the velocity (should be standardized velocity)
+#         # only sort points and rotate to pi/2 (no translation, no scaling)
+#         Xnew = torch.zeros_like(Xold)
+#         vinf_stand = self.standardize(vinf, torch.zeros((2,nv), dtype=torch.float64), rotate, torch.zeros((2,nv), dtype=torch.float64), 1, sortIdx)
+#         z = vinf_stand[:N] + 1j * vinf_stand[N:]
+#         zh = torch.fft.fft(z, dim=0)
+#         V1, V2 = torch.real(zh), torch.imag(zh)
+#         MVinf_stand = torch.vstack((torch.einsum('NiB,iB ->NB', Z11r, V1) + torch.einsum('NiB,iB ->NB', Z12r, V2),
+#                                torch.einsum('NiB,iB ->NB', Z21r, V1) + torch.einsum('NiB,iB ->NB', Z22r, V2)))
             
-        for k in range(nv):
-            # vinf_stand = self.standardize(vinf[:, k], torch.array([0, 0]), rotate[k], torch.array([0, 0]), 1, sort_idx[:, k])
-            # z = vinf_stand[:N] + 1j * vinf_stand[N:]
+#         for k in range(nv):
+#             # vinf_stand = self.standardize(vinf[:, k], torch.array([0, 0]), rotate[k], torch.array([0, 0]), 1, sort_idx[:, k])
+#             # z = vinf_stand[:N] + 1j * vinf_stand[N:]
 
-            # zh = torch.fft(z)
-            # V1, V2 = torch.real(zh[:, k]), torch.imag(zh[:, k])
-            # Compute the approximate value of the term M*vinf
-            # MVinf_stand = torch.vstack([Z11r[:, :, k] @ V1 + Z12r[:, :, k] @ V2, 
-            #                         Z21r[:, :, k] @ V1 + Z22r[:, :, k] @ V2])
+#             # zh = torch.fft(z)
+#             # V1, V2 = torch.real(zh[:, k]), torch.imag(zh[:, k])
+#             # Compute the approximate value of the term M*vinf
+#             # MVinf_stand = torch.vstack([Z11r[:, :, k] @ V1 + Z12r[:, :, k] @ V2, 
+#             #                         Z21r[:, :, k] @ V1 + Z22r[:, :, k] @ V2])
             
-            # Need to destandardize MVinf (take sorting and rotation back)
-            MVinf = torch.zeros_like(MVinf_stand[:,k])
-            idx = torch.concatenate([sortIdx[k], sortIdx[k] + N])
-            MVinf[idx] = MVinf_stand[:,k]
-            MVinf = self.rotationOperator(MVinf, -rotate[k], [0, 0])
+#             # Need to destandardize MVinf (take sorting and rotation back)
+#             MVinf = torch.zeros_like(MVinf_stand[:,k])
+#             idx = torch.concatenate([sortIdx[k], sortIdx[k] + N])
+#             MVinf[idx] = MVinf_stand[:,k]
+#             MVinf = self.rotationOperator(MVinf, -rotate[k], [0, 0])
 
-            Xnew[:, k] = Xold[:, k] + self.dt * vinf[:, k] - self.dt * MVinf
+#             Xnew[:, k] = Xold[:, k] + self.dt * vinf[:, k] - self.dt * MVinf
 
-        return Xnew
+#         return Xnew
 
-    def relaxWTorchNet(self, Xmid):
+#     def relaxWTorchNet(self, Xmid):
        
-        Xin, scaling, rotate, rotCent, trans, sortIdx = self.standardizationStep(Xmid)
+#         Xin, scaling, rotate, rotCent, trans, sortIdx = self.standardizationStep(Xmid)
         
-        Xpred = self.relaxNetwork.forward(Xin)
-        Xnew = self.destandardize(Xpred, trans, rotate, rotCent, scaling, sortIdx)
+#         Xpred = self.relaxNetwork.forward(Xin)
+#         Xnew = self.destandardize(Xpred, trans, rotate, rotCent, scaling, sortIdx)
 
-        return Xnew
+#         return Xnew
     
-    def standardizationStep(self, Xin):
-        # compatible with multi ves
-        oc = self.oc
-        X = Xin[:]
-        # % Equally distribute points in arc-length
-        for w in range(10):
-            X, _, _ = oc.redistributeArcLength(X)
-        # % standardize angle, center, scaling and point order
-        trans, rotate, rotCenter, scaling, multi_sortIdx = self.referenceValues(X)
+#     def standardizationStep(self, Xin):
+#         # compatible with multi ves
+#         oc = self.oc
+#         X = Xin[:]
+#         # % Equally distribute points in arc-length
+#         for w in range(10):
+#             X, _, _ = oc.redistributeArcLength(X)
+#         # % standardize angle, center, scaling and point order
+#         trans, rotate, rotCenter, scaling, multi_sortIdx = self.referenceValues(X)
         
-        X = self.standardize(X, trans, rotate, rotCenter, scaling, multi_sortIdx)
-        return X, scaling, rotate, rotCenter, trans, multi_sortIdx
+#         X = self.standardize(X, trans, rotate, rotCenter, scaling, multi_sortIdx)
+#         return X, scaling, rotate, rotCenter, trans, multi_sortIdx
 
-    def standardize(self, X, translation, rotation, rotCenter, scaling, multi_sortIdx):
-        # compatible with multi ves
-        N = len(multi_sortIdx[0])
-        Xrotated = self.rotationOperator(X, rotation, rotCenter)
-        Xrotated = self.translateOp(Xrotated, translation)
-        XrotSort = torch.zeros_like(Xrotated)
-        for i in range(X.shape[1]):
-            XrotSort[:,i] = torch.concatenate((Xrotated[multi_sortIdx[i], i], Xrotated[multi_sortIdx[i] + N, i]))
-        XrotSort = scaling*XrotSort
-        return XrotSort
+#     def standardize(self, X, translation, rotation, rotCenter, scaling, multi_sortIdx):
+#         # compatible with multi ves
+#         N = len(multi_sortIdx[0])
+#         Xrotated = self.rotationOperator(X, rotation, rotCenter)
+#         Xrotated = self.translateOp(Xrotated, translation)
+#         XrotSort = torch.zeros_like(Xrotated)
+#         for i in range(X.shape[1]):
+#             XrotSort[:,i] = torch.concatenate((Xrotated[multi_sortIdx[i], i], Xrotated[multi_sortIdx[i] + N, i]))
+#         XrotSort = scaling*XrotSort
+#         return XrotSort
 
 
-    def destandardize(self, XrotSort, translation, rotation, rotCent, scaling, sortIdx):
-        ''' compatible with multiple ves'''
-        N = len(sortIdx[0])
-        nv = XrotSort.shape[1]
+#     def destandardize(self, XrotSort, translation, rotation, rotCent, scaling, sortIdx):
+#         ''' compatible with multiple ves'''
+#         N = len(sortIdx[0])
+#         nv = XrotSort.shape[1]
 
-        # Scale back
-        XrotSort = XrotSort / scaling
+#         # Scale back
+#         XrotSort = XrotSort / scaling
 
-        # Change ordering back
-        X = torch.zeros_like(XrotSort)
-        for i in range(nv):
-            X[sortIdx[i], i] = XrotSort[:N, i]
-            X[sortIdx[i] + N, i] = XrotSort[N:, i]
+#         # Change ordering back
+#         X = torch.zeros_like(XrotSort)
+#         for i in range(nv):
+#             X[sortIdx[i], i] = XrotSort[:N, i]
+#             X[sortIdx[i] + N, i] = XrotSort[N:, i]
 
-        # Take translation back
-        X = self.translateOp(X, -translation)
+#         # Take translation back
+#         X = self.translateOp(X, -translation)
 
-        # Take rotation back
-        X = self.rotationOperator(X, -rotation, rotCent)
+#         # Take rotation back
+#         X = self.rotationOperator(X, -rotation, rotCent)
 
-        return X
+#         return X
     
     
-    def referenceValues(self, Xref):
-        ''' Shan: compatible with multi ves'''
+#     def referenceValues(self, Xref):
+#         ''' Shan: compatible with multi ves'''
 
-        oc = self.oc
-        N = len(Xref) // 2
-        nv = Xref.shape[1]
-        tempX = torch.zeros_like(Xref)
-        tempX = Xref[:]
+#         oc = self.oc
+#         N = len(Xref) // 2
+#         nv = Xref.shape[1]
+#         tempX = torch.zeros_like(Xref)
+#         tempX = Xref[:]
 
-        # Find the physical center
-        center = oc.getPhysicalCenter(tempX)
-        multi_V = oc.getPrincAxesGivenCentroid(tempX,center)
-        w = torch.tensor([0, 1]) # y-dim unit vector
-        rotation = torch.arctan2(w[1]*multi_V[0]-w[0]*multi_V[1], w[0]*multi_V[0]+w[1]*multi_V[1])
+#         # Find the physical center
+#         center = oc.getPhysicalCenter(tempX)
+#         multi_V = oc.getPrincAxesGivenCentroid(tempX,center)
+#         w = torch.tensor([0, 1]) # y-dim unit vector
+#         rotation = torch.arctan2(w[1]*multi_V[0]-w[0]*multi_V[1], w[0]*multi_V[0]+w[1]*multi_V[1])
         
-        rotCenter = center # the point around which the frame is rotated
-        Xref = self.rotationOperator(tempX, rotation, rotCenter)
-        center = oc.getPhysicalCenter(Xref) # redundant?
-        translation = -center
+#         rotCenter = center # the point around which the frame is rotated
+#         Xref = self.rotationOperator(tempX, rotation, rotCenter)
+#         center = oc.getPhysicalCenter(Xref) # redundant?
+#         translation = -center
         
-        Xref = self.translateOp(Xref, translation)
+#         Xref = self.translateOp(Xref, translation)
         
-        multi_sortIdx = []
-        for k in range(nv):
-        # Shan: This for loop can be avoided but will be less readable
-            firstQuad = np.intersect1d(torch.where(Xref[:N,k] >= 0)[0], torch.where(Xref[N:,k] >= 0)[0])
-            theta = torch.arctan2(Xref[N:,k], Xref[:N,k])
-            idx = torch.argmin(theta[firstQuad])
-            sortIdx = torch.concatenate((torch.arange(firstQuad[idx],N), torch.arange(0, firstQuad[idx])))
-            multi_sortIdx.append(sortIdx)
+#         multi_sortIdx = []
+#         for k in range(nv):
+#         # Shan: This for loop can be avoided but will be less readable
+#             firstQuad = np.intersect1d(torch.where(Xref[:N,k] >= 0)[0], torch.where(Xref[N:,k] >= 0)[0])
+#             theta = torch.arctan2(Xref[N:,k], Xref[:N,k])
+#             idx = torch.argmin(theta[firstQuad])
+#             sortIdx = torch.concatenate((torch.arange(firstQuad[idx],N), torch.arange(0, firstQuad[idx])))
+#             multi_sortIdx.append(sortIdx)
 
-        _, _, length = oc.geomProp(Xref)
-        scaling = 1 / length
+#         _, _, length = oc.geomProp(Xref)
+#         scaling = 1 / length
         
-        return translation, rotation, rotCenter, scaling, multi_sortIdx
+#         return translation, rotation, rotCenter, scaling, multi_sortIdx
 
     
-    def rotationOperator(self, X, theta, rotCent):
-        ''' Shan: compatible with multi ves
-        theta of shape (1,nv), rotCent of shape (2,nv)'''
-        Xrot = torch.zeros_like(X)
-        x = X[:len(X)//2] - rotCent[0]
-        y = X[len(X)//2:] - rotCent[1]
+#     def rotationOperator(self, X, theta, rotCent):
+#         ''' Shan: compatible with multi ves
+#         theta of shape (1,nv), rotCent of shape (2,nv)'''
+#         Xrot = torch.zeros_like(X)
+#         x = X[:len(X)//2] - rotCent[0]
+#         y = X[len(X)//2:] - rotCent[1]
 
-        # Rotated shape
-        xrot = x * torch.cos(theta) - y * torch.sin(theta)
-        yrot = x * torch.sin(theta) + y * torch.cos(theta)
+#         # Rotated shape
+#         xrot = x * torch.cos(theta) - y * torch.sin(theta)
+#         yrot = x * torch.sin(theta) + y * torch.cos(theta)
 
-        Xrot[:len(X)//2] = xrot + rotCent[0]
-        Xrot[len(X)//2:] = yrot + rotCent[1]
-        return Xrot
+#         Xrot[:len(X)//2] = xrot + rotCent[0]
+#         Xrot[len(X)//2:] = yrot + rotCent[1]
+#         return Xrot
 
-    def translateOp(self, X, transXY):
-        ''' Shan: compatible with multi ves
-         transXY of shape (2,nv)'''
-        Xnew = torch.zeros_like(X)
-        Xnew[:len(X)//2] = X[:len(X)//2] + transXY[0]
-        Xnew[len(X)//2:] = X[len(X)//2:] + transXY[1]
-        return Xnew
+#     def translateOp(self, X, transXY):
+#         ''' Shan: compatible with multi ves
+#          transXY of shape (2,nv)'''
+#         Xnew = torch.zeros_like(X)
+#         Xnew[:len(X)//2] = X[:len(X)//2] + transXY[0]
+#         Xnew[len(X)//2:] = X[len(X)//2:] + transXY[1]
+#         return Xnew
 
 
     
@@ -714,11 +714,11 @@ class MLARM_manyfree_py:
                                 model_path="../trained/ves_merged_advten.pth", 
                                 device = device)
     
-    def time_step(self, Xold, tenOld):
+    def many_time_step(self, Xold, tenOld):
         oc = self.oc
-
+        torch.set_default_device(Xold.device)
         # background velocity on vesicles
-        vback = torch.from_numpy(self.vinf(Xold))
+        vback = self.vinf(Xold)
 
         # build vesicle class at the current step
         vesicle = capsules(Xold, [], [], self.kappa, 1)
@@ -734,23 +734,20 @@ class MLARM_manyfree_py:
         # Calculate velocity induced by vesicles on each other due to elastic force
         # use neural networks to calculate near-singular integrals
         farFieldtracJump = self.computeStokesInteractions(vesicle, tracJump, oc)
-        farFieldtracJump = upsThenFilterShape(farFieldtracJump, 4*N, 16)
 
         # Solve for tension
         vBackSolve = self.invTenMatOnVback(Xold, vback + farFieldtracJump)
         selfBendSolve = self.invTenMatOnSelfBend(Xold)
         tenNew = -(vBackSolve + selfBendSolve)
-        tracJump = upsThenFilterShape(tenNew, 4*N, 16)
+        tenNew = upsThenFilterShape(tenNew, 4*N, 16)
 
         # update the elastic force with the new tension
         fTen = vesicle.tensionTerm(tenNew)
         tracJump = fBend + fTen
-        tracJump = upsThenFilterShape(tracJump, 4*N, 16)
 
         # Calculate far-field again and correct near field before advection
         # use neural networks to calculate near-singular integrals
         farFieldtracJump = self.computeStokesInteractions(vesicle, tracJump, oc)
-        farFieldtracJump = upsThenFilterShape(farFieldtracJump, 4*N, 16)
 
         # Total background velocity
         vbackTotal = vback + farFieldtracJump
@@ -758,17 +755,65 @@ class MLARM_manyfree_py:
         # Compute the action of dt*(1-M) on Xold
         Xadv = self.translateVinfwTorch(Xold, vbackTotal)
         Xadv = upsThenFilterShape(Xadv, 4*N, 16)
-        XadvC = oc.correctAreaAndLength(Xadv, self.area0, self.len0)
-        Xadv = oc.alignCenterAngle(Xadv, XadvC)
+        # XadvC = oc.correctAreaAndLength(Xadv, self.area0, self.len0)
+        # Xadv = oc.alignCenterAngle(Xadv, XadvC.to(Xold.device))
         
 
         # Compute the action of relax operator on Xold + Xadv
         Xnew = self.relaxWTorchNet(Xadv)
         Xnew = upsThenFilterShape(Xnew, 4*N, 16)
+        for _ in range(5):
+            Xnew, flag = oc.redistributeArcLength(Xnew)
+            if flag:
+                break
+        XnewC = oc.correctAreaAndLength(Xnew, self.area0, self.len0)
+        Xnew = oc.alignCenterAngle(Xnew, XnewC.to(Xold.device))
+            
+        return Xnew, tenNew
+    
+    def single_time_step(self, Xold):
+        
+        # % take a time step with neural networks
+        oc = self.oc
+        # background velocity on vesicles
+        vback = self.vinf(Xold)
+        N = Xold.shape[0]//2
+
+        # Compute the action of dt*(1-M) on Xold
+        # tStart = time.time()
+        Xadv = self.translateVinfwTorch(Xold, vback)
+        # tEnd = time.time()
+        # print(f'Solving ADV takes {tEnd - tStart} sec.')
+
+        # Correct area and length
+        # tStart = time.time()
+        Xadv = upsThenFilterShape(Xadv, 4*N, 16)
+        # XadvC = oc.correctAreaAndLength(Xadv, self.area0, self.len0)
+        # Xadv = oc.alignCenterAngle(Xadv, XadvC)
+        # tEnd = time.time()
+        # print(f'Solving correction takes {tEnd - tStart} sec.')
+
+        # Compute the action of relax operator on Xold + Xadv
+        # tStart = time.time()
+        Xnew = self.relaxWTorchNet(Xadv)
+        # tEnd = time.time()
+        # print(f'Solving RELAX takes {tEnd - tStart} sec.')
+
+        # Correct area and length
+        # tStart = time.time()
+        Xnew = upsThenFilterShape(Xnew, 4*N, 16)
+        for _ in range(5):
+            Xnew, flag = oc.redistributeArcLength(Xnew)
+            if flag:
+                break
         XnewC = oc.correctAreaAndLength(Xnew, self.area0, self.len0)
         Xnew = oc.alignCenterAngle(Xnew, XnewC)
         
-        return Xnew, tenNew
+        # tEnd = time.time()
+        # print(f'Solving correction takes {tEnd - tStart} sec.')
+
+        return Xnew
+
 
     def predictNearLayersWTorchNet(self, X, tracJump):
         N = X.shape[0] // 2
@@ -887,7 +932,6 @@ class MLARM_manyfree_py:
             K.remove(k)
             far_field[:, [k]] = self.exactStokesSL(vesicle, trac_jump, vesicle.X[:, [k]], K)
 
-
         self.nearFieldCorrection(oc, vesicle, trac_jump, far_field, option='kdtree')
         
         return far_field
@@ -898,7 +942,8 @@ class MLARM_manyfree_py:
         nv = vesicle.nv
         xvesicle = vesicle.X[:N, :]
         yvesicle = vesicle.X[N:, :]
-        max_layer_dist = torch.sqrt(vesicle.length / vesicle.N)
+        # max_layer_dist = np.sqrt(vesicle.length.item() / vesicle.N)
+        max_layer_dist = vesicle.length.item() / vesicle.N
 
         i_call_near = [False]*nv
         query_X = defaultdict(list)
@@ -942,7 +987,7 @@ class MLARM_manyfree_py:
                             i_call_near[k] = True
 
         elif option == "kdtree":
-            all_points = torch.concat((xvesicle.T.reshape(-1,1), yvesicle.T.reshape(-1,1)), dim=1)
+            all_points = torch.concat((xvesicle.T.reshape(-1,1), yvesicle.T.reshape(-1,1)), dim=1).cpu().numpy()
             tree = KDTree(all_points)
             all_nbrs = tree.query_ball_point(all_points, max_layer_dist, return_sorted=True)
             # all_nbrs = np.array(all_nbrs)
@@ -956,7 +1001,9 @@ class MLARM_manyfree_py:
                         continue
                     others_from_k = others[np.where((others>= N*k) & (others < N*(k+1)))]
                     if len(others_from_k) > 0:
+                        # which of ves k's points are in others' near zone
                         ids_in_store[k] += list(others_from_k % N)
+                        # and their coords
                         query_X[k].append(all_points[others_from_k])
                         # k is in the near zone of j
                         near_ves_ids[k].add(j)
@@ -970,7 +1017,8 @@ class MLARM_manyfree_py:
             for k in range(nv):
                 if i_call_near[k]:
                     ids_in = ids_in_store[k] 
-                    points_query = torch.concat(query_X[k])
+                    points_query = np.concatenate(query_X[k])
+                    # print(ids_in)
                     ves_id = list(near_ves_ids[k])
 
                     n_points = N * len(ves_id)
@@ -978,7 +1026,7 @@ class MLARM_manyfree_py:
                     velXInput = velx[:, :, ves_id].reshape(1, 3 * n_points)
                     velYInput = vely[:, :, ves_id].reshape(1, 3 * n_points)
 
-                    scipy_rbf =  scipyinterp(Xin.T, torch.concatenate((velXInput.T, velYInput.T), dim=-1), kernel='linear', degree = 1)
+                    scipy_rbf =  scipyinterp(Xin.T.cpu(), torch.concatenate((velXInput.T, velYInput.T), dim=-1).cpu(), kernel='linear', degree = 1)
                     rbf_vel = torch.tensor(scipy_rbf(points_query))
                     
                     far_x = far_field[:N, k]
@@ -1222,7 +1270,7 @@ class MLARM_manyfree_py:
         # tenPredictStand = torch.array(tenPredictStand, dtype=float)
 
         tenPredictStand = self.tenSelfNetwork.forward(Xstand)
-        tenPredictStand = tenPredictStand.double().cpu()
+        tenPredictStand = tenPredictStand.double()
         tenPred = torch.zeros((N, nv), dtype=torch.float64)
         for k in range(nv):
             # also destandardize
@@ -1249,7 +1297,7 @@ class MLARM_manyfree_py:
         if Xtar is not None and K1 is not None:
             Ntar = Xtar.shape[0] // 2
             ncol = Xtar.shape[1]
-            stokesSLPtar = torch.zeros((2 * Ntar, ncol), dtype=torch.float64)
+            stokesSLPtar = torch.zeros((2 * Ntar, ncol), dtype=torch.float64, device=vesicle.X.device)
         else:
             K1 = []
             Ntar = 0
@@ -1331,8 +1379,10 @@ class MLARM_manyfree_py:
         oc = self.oc
         X = Xin[:]
         # % Equally distribute points in arc-length
-        for w in range(5):
-            X, _, _ = oc.redistributeArcLength(X)
+        for _ in range(5):
+            X, flag = oc.redistributeArcLength(X)
+            if flag:
+                break
             
         # X = oc.alignCenterAngle(Xin,X)
         # % standardize angle, center, scaling and point order
@@ -1400,7 +1450,7 @@ class MLARM_manyfree_py:
         multi_sortIdx = []
         for k in range(nv):
         # Shan: This for loop can be avoided but will be less readable
-            firstQuad = np.intersect1d(torch.where(Xref[:N,k] >= 0)[0], torch.where(Xref[N:,k] >= 0)[0])
+            firstQuad = np.intersect1d(torch.where(Xref[:N,k] >= 0)[0].cpu(), torch.where(Xref[N:,k] >= 0)[0].cpu())
             theta = torch.arctan2(Xref[N:,k], Xref[:N,k])
             idx = torch.argmin(theta[firstQuad])
             sortIdx = torch.concatenate((torch.arange(firstQuad[idx],N), torch.arange(0, firstQuad[idx])))
