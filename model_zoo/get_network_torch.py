@@ -98,7 +98,7 @@ class MergedAdvNetwork:
         # dicts = []
         # # models = []
         # for l in range(s, t+1):
-        #     model_path = path + "/ves_fft_mode"+str(l)+".pth"
+        #     model_path = "/work/09452/alberto47/ls6/vesicle/save_models/2024Oct" + "/ves_adv_fft_2024Oct_mode"+str(l)+".pth"
         #     dicts.append(torch.load(model_path, map_location = self.device))
 
         # # organize and match trained weights
@@ -109,14 +109,18 @@ class MergedAdvNetwork:
         #     if key_comps[-1][0:3] =='num':
         #         continue
         #     params = []
-        #     for dict in dicts:
+        #     for i, dict in enumerate(dicts):
+        #         if i == 63:
+        #             params.append(torch.zeros_like(dict[key]))
+        #             continue
         #         params.append(dict[key])
         #     new_weights[key] = torch.concat(tuple(params),dim=0)
         # model.load_state_dict(new_weights, strict=True)
+        # torch.save(model.state_dict(), "../trained/2024Oct_ves_merged_adv.pth")
 
         model = Net_merge_advection(12, 1.7, 20, rep=127)
         model.load_state_dict(torch.load(model_path, map_location=self.device))
-        # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_adv.pth"))
+        # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/2024Oct_ves_merged_adv.pth"))
         model.eval()
         model.to(self.device)
         return model
@@ -149,17 +153,17 @@ class MergedAdvNetwork:
         bases = 1/N*np.exp(1j*theta*np.arange(N).reshape(1,N))
         # specify which mode
         rr, ii = np.real(bases[:,s-1:t]), np.imag(bases[:,s-1:t])
-        basis = torch.from_numpy(np.concatenate((rr,ii),axis=-1)).reshape(1,rep,256).to(device)
+        basis = torch.from_numpy(np.concatenate((rr,ii),axis=0)).T.reshape(1,rep,256).to(device)
         # add the channel of fourier basis
         one_mode_inputs = [torch.concat((input_coords[:, [k]], basis.repeat(nv,1,1)[:,[k]]), dim=1) for k in range(rep)]
-        input_net = torch.concat(tuple(one_mode_inputs), dim=1).to(device)
+        input_net = torch.concat(tuple(one_mode_inputs), dim=1).to(device) # input_net (nv, 254, 256)
             
         # Predict using neural networks
         self.model.eval()
         with torch.no_grad():
             # Xpredict of size (127, nv, 2, 256)
             Xpredict = self.model(input_net.float()).reshape(-1,rep,2,256).transpose(0,1)
-        
+            
         for imode in range(s, t+1): 
             real_mean = self.out_param[imode - 2][0]
             real_std = self.out_param[imode - 2][1]
@@ -170,7 +174,8 @@ class MergedAdvNetwork:
             Xpredict[imode - 2][:, 0, :] = (Xpredict[imode - 2][:, 0, :] * real_std) + real_mean
             # % second channel is imaginary
             Xpredict[imode - 2][:, 1, :] = (Xpredict[imode - 2][:, 1, :] * imag_std) + imag_mean
-
+        
+        Xpredict[63] = torch.zeros(nv, 2, 256)
         return Xpredict.double()
 
     # def TODOloadModel_grouped(self): # TO DO 
@@ -393,11 +398,11 @@ class MergedNearFourierNetwork:
         # t = 128
         # rep = t - s + 1 # number of repetitions
         # # prepare the network
-        # model = Net_ves_merge_nocoords_nearFourier(14, 3.2, 28, rep=rep)
+        # model = Net_ves_merge_nocoords_nearFourier(13, 3.0, 26, rep=rep)
         # dicts = []
         # # models = []
         # for l in range(s, t+1):
-        #     model_path = f"/work/09452/alberto47/ls6/vesicle_nearF2024/trained_nocoords/Ves_nearFourier_nocoords_mode{l}.pth"
+        #     model_path = f"/work/09452/alberto47/ls6/vesicle_nearF2024/trained_disth_nocoords/Ves_disth_nearFourier_nocoords_mode{l}.pth"
         #     dicts.append(torch.load(model_path, map_location = self.device))
 
         # # organize and match trained weights
@@ -412,8 +417,13 @@ class MergedNearFourierNetwork:
         #         params.append(dict[key])
         #     new_weights[key] = torch.concat(tuple(params),dim=0)
         # model.load_state_dict(new_weights, strict=True)
-
-        model = Net_ves_merge_nocoords_nearFourier(14, 3.2, 28, rep=128)
+        # torch.save(model.state_dict(), "../trained/ves_merged_disth_nearFourier.pth")
+        
+        if "disth" in path:
+            model = Net_ves_merge_nocoords_nearFourier(13, 3.0, 26, rep=128)
+        else:
+            model = Net_ves_merge_nocoords_nearFourier(14, 3.2, 28, rep=128)
+        # model = Net_ves_merge_nocoords_nearFourier(13, 3.0, 26, rep=128)
         # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_nearFourier.pth"))
         model.load_state_dict(torch.load(path, map_location=self.device))
         model.eval()
@@ -445,7 +455,7 @@ class MergedNearFourierNetwork:
         # use broadcasting
         out = out * self.out_param[:, 1] + self.out_param[:, 0]
 
-        reshaped_out =  out.permute(1, 0, 2, 3).cpu() # shape: (nv, 128, num_modes=128, 12)
+        reshaped_out =  out.permute(1, 0, 2, 3) # shape: (nv, 128, num_modes=128, 12)
         # after postprocess, output velx_real, vely_real, velx_imag, vely_imag
         return reshaped_out[..., :3], reshaped_out[..., 3:6], reshaped_out[..., 6:9], reshaped_out[..., 9:]
         

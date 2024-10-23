@@ -12,6 +12,7 @@ from scipy.interpolate import RBFInterpolator as scipyinterp
 from model_zoo.get_network_torch import RelaxNetwork, TenSelfNetwork, MergedAdvNetwork, MergedTenAdvNetwork, MergedNearFourierNetwork
 import time
 import mat73
+import scipy.io as scio
 
 # class MLARM_py:
 #     def __init__(self, dt, vinf, oc, advNetInputNorm, advNetOutputNorm,
@@ -683,7 +684,7 @@ class MLARM_manyfree_py:
         self.advNetInputNorm = advNetInputNorm
         self.advNetOutputNorm = advNetOutputNorm
         self.mergedAdvNetwork = MergedAdvNetwork(self.advNetInputNorm.to(device), self.advNetOutputNorm.to(device), 
-                                model_path="../trained/ves_merged_adv.pth", 
+                                model_path="../trained/2024Oct_ves_merged_adv.pth", 
                                 device = device)
         
         # Normalization values for relaxation network
@@ -697,7 +698,8 @@ class MLARM_manyfree_py:
         self.nearNetInputNorm = nearNetInputNorm
         self.nearNetOutputNorm = nearNetOutputNorm
         self.nearNetwork = MergedNearFourierNetwork(self.nearNetInputNorm.to(device), self.nearNetOutputNorm.to(device),
-                                model_path="../trained/ves_merged_nearFourier.pth",
+                                # model_path="../trained/ves_merged_nearFourier.pth",
+                                model_path="../trained/ves_merged_disth_nearFourier.pth",
                                 device = device)
         
         # Normalization values for tension-self network
@@ -776,7 +778,7 @@ class MLARM_manyfree_py:
         # % take a time step with neural networks
         oc = self.oc
         # background velocity on vesicles
-        vback = self.vinf(Xold)
+        vback = torch.from_numpy(self.vinf(Xold))
         N = Xold.shape[0]//2
 
         # Compute the action of dt*(1-M) on Xold
@@ -787,7 +789,7 @@ class MLARM_manyfree_py:
 
         # Correct area and length
         # tStart = time.time()
-        Xadv = upsThenFilterShape(Xadv, 4*N, 16)
+        # Xadv = upsThenFilterShape(Xadv, 4*N, 16)
         # XadvC = oc.correctAreaAndLength(Xadv, self.area0, self.len0)
         # Xadv = oc.alignCenterAngle(Xadv, XadvC)
         # tEnd = time.time()
@@ -801,7 +803,7 @@ class MLARM_manyfree_py:
 
         # Correct area and length
         # tStart = time.time()
-        Xnew = upsThenFilterShape(Xnew, 4*N, 16)
+        # Xnew = upsThenFilterShape(Xnew, 4*N, 16)
         for _ in range(5):
             Xnew, flag = oc.redistributeArcLength(Xnew)
             if flag:
@@ -821,7 +823,8 @@ class MLARM_manyfree_py:
 
         oc = self.oc
 
-        maxLayerDist = np.sqrt(1 / N) # length = 1, h = 1/N;
+        # maxLayerDist = np.sqrt(1 / N) # length = 1, h = 1/N;
+        maxLayerDist = (1 / N) # length = 1, h = 1/N;
         nlayers = 3 # three layers
         dlayer = torch.linspace(0, maxLayerDist, nlayers, dtype=torch.float64)
 
@@ -1037,8 +1040,6 @@ class MLARM_manyfree_py:
         return 
 
     def translateVinfwTorch(self, Xold, vinf):
-        # Xitorchut is equally distributed in arc-length
-        # Xold as well. So, we add up coordinates of the same points.
         N = Xold.shape[0] // 2
         nv = Xold.shape[1]
 
@@ -1047,7 +1048,7 @@ class MLARM_manyfree_py:
         # modesInUse = 16
         # mode_list = torch.where(torch.abs(modes) <= modes_in_use)[0]
         # mode_list = [i for i in range(modesInUse)] + [128-i for i in range(modesInUse, 0, -1)]
-        mode_list = [i for i in range(128)]
+        mode_list = np.arange(128)
         # Standardize itorchut
         # Xstand = torch.zeros_like(Xold)
         # scaling = torch.zeros(nv)
@@ -1079,20 +1080,37 @@ class MLARM_manyfree_py:
         #         itorchut_net = torch.concatenate((itorchut_net, basis), dim=1)
         #         itorchut_list.append(itorchut_net)
 
-
         # Xpredict = pyrunfile("advect_predict.py", "output_list", itorchut_shape=itorchut_list, num_ves=nv)
+        # data = scio.loadmat("../advectionNetCheck.mat")
+
+        # X = torch.tensor(data['X'])
+        # # # Xstand = torch.tensor(data['Xstand'])
+        # MVinf = torch.tensor(data['MVinf'])
+        # # # MVinfNN = torch.tensor(data['MVinfNN'])
+        # vback = torch.tensor(data['vback'])
+        # # # vinfstand = torch.tensor(data['vinfStand'])
+        # trueZ11 = torch.tensor(data['Z11true'])
+        # trueZ21 = torch.tensor(data['Z21true'])
+        # trueZ22 = torch.tensor(data['Z22true'])
+        # trueZ12 = torch.tensor(data['Z12true'])
         
         Xpredict = self.mergedAdvNetwork.forward(Xstand.to(self.device))
         Xpredict = Xpredict.cpu()
+        # Xpredict = torch.from_numpy(np.load("singles_adv.npy"))
+        # np.save("Xpredict_adv.npy", Xpredict.numpy())
+        # Xpredict = torch.ones(127, nv, 2, 256)
         # Approximate the multiplication M*(FFTBasis)
         Z11r = torch.zeros((N, N, nv), dtype=torch.float64)
         Z12r = torch.zeros_like(Z11r)
         Z21r = torch.zeros_like(Z11r)
         Z22r = torch.zeros_like(Z11r)
 
-        for ij in range(len(mode_list) - 1):
-            imode = mode_list[ij + 1]
-            pred = Xpredict[ij]
+        # for ij in range(len(mode_list) - 1):
+        for ij in range(127):
+            imode = mode_list[ij + 1] # imode skips 0 and starts with 1
+            if imode == 64:
+                continue
+            pred = Xpredict[ij] # Xpredict is (127, nv, 2, 256)
 
             for k in range(nv):
                 Z11r[:, imode, k] = pred[k, 0, :N]
@@ -1100,6 +1118,11 @@ class MLARM_manyfree_py:
                 Z12r[:, imode, k] = pred[k, 1, :N]
                 Z22r[:, imode, k] = pred[k, 1, N:]
 
+        # print(torch.norm(trueZ11[:,mode-1] - out[0,0,:128])/torch.norm(trueZ11[:,1]))
+        # print(torch.norm(trueZ21[:,mode-1] - out[0,0,128:])/torch.norm(trueZ21[:,1]))
+        # print(torch.norm(trueZ12[:,mode-1] - out[0,1,:128])/torch.norm(trueZ12[:,1]))
+        # print(torch.norm(trueZ22[:,mode-1] - out[0,1,128:])/torch.norm(trueZ22[:,1]))
+        
         # Take fft of the velocity (should be standardized velocity)
         # only sort points and rotate to pi/2 (no translation, no scaling)
         Xnew = torch.zeros_like(Xold)
@@ -1109,21 +1132,21 @@ class MLARM_manyfree_py:
         V1, V2 = torch.real(zh), torch.imag(zh)
         MVinf_stand = torch.vstack((torch.einsum('NiB,iB ->NB', Z11r, V1) + torch.einsum('NiB,iB ->NB', Z12r, V2),
                                torch.einsum('NiB,iB ->NB', Z21r, V1) + torch.einsum('NiB,iB ->NB', Z22r, V2)))
-            
+           
         for k in range(nv):
-            # vinf_stand = self.standardize(vinf[:, k], torch.array([0, 0]), rotate[k], torch.array([0, 0]), 1, sort_idx[:, k])
+            # vinf_stand = self.standardize(vinf[:, k], torch.tensor([0, 0]), rotate[k], torch.tensor([0, 0]), 1, sortIdx[k])
             # z = vinf_stand[:N] + 1j * vinf_stand[N:]
 
-            # zh = torch.fft(z)
+            # zh = torch.fft(z, dim=0)
             # V1, V2 = torch.real(zh[:, k]), torch.imag(zh[:, k])
             # Compute the approximate value of the term M*vinf
-            # MVinf_stand = torch.vstack([Z11r[:, :, k] @ V1 + Z12r[:, :, k] @ V2, 
+            # MVinf_stand = torch.hstack([Z11r[:, :, k] @ V1 + Z12r[:, :, k] @ V2, 
             #                         Z21r[:, :, k] @ V1 + Z22r[:, :, k] @ V2])
             
             # Need to destandardize MVinf (take sorting and rotation back)
-            MVinf = torch.zeros_like(MVinf_stand[:,k])
+            MVinf = torch.zeros_like(MVinf_stand[:, k])
             idx = torch.concatenate([sortIdx[k], sortIdx[k] + N])
-            MVinf[idx] = MVinf_stand[:,k]
+            MVinf[idx] = MVinf_stand[:, k]
             MVinf = self.rotationOperator(MVinf, -rotate[k], [0, 0])
 
             Xnew[:, k] = Xold[:, k] + self.dt * vinf[:, k] - self.dt * MVinf

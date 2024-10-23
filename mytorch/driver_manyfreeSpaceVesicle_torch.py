@@ -1,4 +1,3 @@
-
 import numpy as np
 import torch
 torch.set_default_dtype(torch.float64)
@@ -10,7 +9,7 @@ from scipy.io import loadmat
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-device = torch.device("cpu")
+device = torch.device("cuda:0")
 # Load curve_py
 oc = Curve()
 
@@ -62,7 +61,7 @@ vinf = set_bg_flow(bgFlow, speed)
 
 # Time stepping
 dt = 1e-5  # Time step size
-Th = 400*dt # Time horizon
+Th = 350*dt # Time horizon
 
 # Vesicle discretization
 N = 128  # Number of points to discretize vesicle
@@ -82,16 +81,18 @@ Ten = torch.from_numpy(np.zeros((128,nv))).to(device)
 
 # Build MLARM class to take time steps using networks
 # Load the normalization (mean, std) values for the networks
-
-adv_net_input_norm = np.load("../trained/ves_adv_trained/ves_fft_in_para.npy")
-adv_net_output_norm = np.load("../trained/ves_adv_trained/ves_fft_out_para.npy")
+# ADV Net retrained in Oct 2024
+adv_net_input_norm = np.load("../trained/2024Oct_adv_fft_tot_in_para.npy")
+adv_net_output_norm = np.load("../trained/2024Oct_adv_fft_tot_out_para.npy")
 # Relax Net for dt = 1E-5 (DIFF_June8)
 relax_net_input_norm = np.array([-8.430413700466488e-09, 0.06278684735298157,
                                 6.290720477863943e-08, 0.13339413702487946])
 relax_net_output_norm = np.array([-2.884585348361668e-10, 0.00020574081281665713,
                                 -5.137390512999218e-10, 0.0001763451291481033])
-nearNetInputNorm = np.load("../trained/in_param_allmode.npy")
-nearNetOutputNorm = np.load("../trained/out_param_allmode.npy")
+# nearNetInputNorm = np.load("../trained/in_param_allmode.npy")
+# nearNetOutputNorm = np.load("../trained/out_param_allmode.npy")
+nearNetInputNorm = np.load("../trained/in_param_disth_allmode.npy")
+nearNetOutputNorm = np.load("../trained/out_param_disth_allmode.npy")
 tenSelfNetInputNorm = np.array([2.980232033378272e-11, 0.06010082736611366, 
                         -1.0086939616904544e-10, 0.13698545098304749])
 tenSelfNetOutputNorm = np.array([327.26141357421875, 375.0673828125 ])
