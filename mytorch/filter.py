@@ -1,5 +1,6 @@
 import torch
 import torch.fft
+# import matplotlib.pyplot as plt
 
 def interpft(x, N_new):
     """
@@ -64,4 +65,46 @@ def upsThenFilterShape(X, Nup, modeCut):
 
     return Xfinal
 
+def upsThenFilterTension(X, Nup, modeCut):
+    """
+    Delete high frequencies from the vesicle shape by upsampling and applying a filter.
+    
+    Parameters:
+        X (Tensor): Shape of the vesicle, with 2*N rows (x and y components) and nv columns.
+        Nup (int): Number of points to upsample.
+        modeCut (int): Cutoff mode to filter high frequencies.
+    
+    Returns:
+        Xfinal (Tensor): The filtered shape.
+    """
+    N = X.size(0)  # Get the number of points (half of the length of X)
+    nv = X.size(1)  # Get the number of columns (number of vesicles)
+
+    # Frequency modes
+    modes = torch.cat([torch.arange(0, Nup//2, device=X.device), torch.arange(-Nup//2, 0, device=X.device)])
+
+    xup = torch.stack([interpft(X[:, k], Nup) for k in range(nv)], dim=1)    
+
+    Xfinal = torch.zeros_like(X)  # Initialize the result tensor
+
+    for k in range(nv):
+        z = xup[:, k] 
+        z_fft = torch.fft.fft(z, dim=0)  # FFT of z
+        z_fft[torch.abs(modes) > modeCut] = 0  # Apply frequency cutoff
+        z_ifft = torch.fft.ifft(z_fft, dim=0)  # Inverse FFT
+
+        # Downsample back to original length and assign to result
+        Xfinal[:, k] = interpft(z_ifft.real, N)
+
+    return Xfinal
+
+
+# x = torch.sin(torch.arange(32)*0.2) + torch.sin(torch.arange(32)*(-0.4)+5)
+# %matplotlib inline
+
+# plt.figure()
+
+
+# plt.plot(torch.arange(32), upsThenFilterTension(x.unsqueeze(-1), 4*32, 2), color='b')
+# plt.plot(torch.arange(32), x, color='r')
 # upsThenFilterShape(torch.rand(256, 2), 512, 16)
