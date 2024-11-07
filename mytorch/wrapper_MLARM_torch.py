@@ -6,7 +6,7 @@ sys.path.append("..")
 from collections import defaultdict
 from capsules import capsules
 # from rayCasting import ray_casting
-from filter import upsThenFilterShape
+from filter import upsThenFilterShape, upsThenFilterTension
 from scipy.spatial import KDTree
 from scipy.interpolate import RBFInterpolator as scipyinterp
 from model_zoo.get_network_torch import RelaxNetwork, TenSelfNetwork, MergedAdvNetwork, MergedTenAdvNetwork, MergedNearFourierNetwork
@@ -706,7 +706,8 @@ class MLARM_manyfree_py:
         self.tenSelfNetInputNorm = tenSelfNetInputNorm
         self.tenSelfNetOutputNorm = tenSelfNetOutputNorm
         self.tenSelfNetwork = TenSelfNetwork(self.tenSelfNetInputNorm.to(device), self.tenSelfNetOutputNorm.to(device), 
-                                model_path="../trained/ves_selften_new.pth", #"../trained/ves_selften.pth", 
+                                model_path = "../trained/Ves_2024Oct_selften_12blks_loss_0.00566cuda1.pth",
+                                # model_path="../trained/ves_selften_new.pth", #"../trained/ves_selften.pth", 
                                 device = device)
         
         # Normalization values for tension-advection networks
@@ -741,11 +742,11 @@ class MLARM_manyfree_py:
         vBackSolve = self.invTenMatOnVback(Xold, vback + farFieldtracJump)
         selfBendSolve = self.invTenMatOnSelfBend(Xold)
         tenNew = -(vBackSolve + selfBendSolve)
-        tenNew = upsThenFilterShape(tenNew, 4*N, 16)
+        tenNew = upsThenFilterTension(tenNew, 4*N, 16)
 
         # update the elastic force with the new tension
-        fTen = vesicle.tensionTerm(tenNew)
-        tracJump = fBend + fTen
+        fTen_new = vesicle.tensionTerm(tenNew)
+        tracJump = fBend + fTen_new
 
         # Calculate far-field again and correct near field before advection
         # use neural networks to calculate near-singular integrals
@@ -849,13 +850,6 @@ class MLARM_manyfree_py:
         # modeList = torch.where(torch.abs(modes) <= modesInUse)[0] # Shan: bug, creates 33 modes
         # modeList = [i for i in range(modesInUse)] + [128-i for i in range(modesInUse, 0, -1)]
 
-        # Normalize itorchut
-        # itorchut_net = torch.zeros((modesInUse, nv, 2, N))
-        # for imode in range(modesInUse):
-        #     for k in range(nv):
-        #         itorchut_net[imode, k, 0, :] = (Xstand[:N, k] - in_param[imode, 0]) / in_param[imode, 1]
-        #         itorchut_net[imode, k, 1, :] = (Xstand[N:, k] - in_param[imode, 2]) / in_param[imode, 3]
-
         input_net = self.nearNetwork.preProcess(Xstand)
         net_pred = self.nearNetwork.forward(input_net)
         velx_real, vely_real, velx_imag, vely_imag = self.nearNetwork.postProcess(net_pred)
@@ -871,7 +865,7 @@ class MLARM_manyfree_py:
         #     fstandIm[:, k] = torch.imag(zh)
                 
         fstand = self.standardize(tracJump, torch.zeros((2,nv), dtype=torch.float64), rotate, torch.zeros((2,nv), dtype=torch.float64), 1, sortIdx)
-        z = fstand[:N] + 1j * fstand[N:]
+        z = fstand[:N, :] + 1j * fstand[N:, :]
         zh = torch.fft.fft(z, dim=0)
         fstandRe = torch.real(zh)
         fstandIm = torch.imag(zh)
