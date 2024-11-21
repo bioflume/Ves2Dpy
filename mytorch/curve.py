@@ -4,7 +4,9 @@ torch.set_default_dtype(torch.float64)
 from scipy.interpolate import CubicSpline
 from scipy.optimize import minimize
 from fft1 import fft1
-
+from scipy.interpolate import interp1d
+# import matlab.engine
+# eng = matlab.engine.start_matlab()
 
 class Curve:
     '''
@@ -34,11 +36,11 @@ class Curve:
         V[N:, :] = y
         return V
 
-    def getCenter(self, X):
-        """Find the center of each capsule."""
-        center = torch.sqrt(torch.mean(X[:X.shape[0] // 2], dim=0) ** 2 +
-                                torch.mean(X[X.shape[0] // 2:], dim=0) ** 2)
-        return center
+    # def getCenter(self, X):
+    #     """Find the center of each capsule."""
+    #     center = torch.sqrt(torch.mean(X[:X.shape[0] // 2], dim=0) ** 2 +
+    #                             torch.mean(X[X.shape[0] // 2:], dim=0) ** 2)
+    #     return center
     
     def getPhysicalCenter(self, X):
         """Fin the physical center of each capsule. Compatible with multi ves.
@@ -113,51 +115,108 @@ class Curve:
 
         return IA
     
-    def getPrincAxesGivenCentroid(self, X, center):
-        """Find the principal axes given centroid.
-        % GK: THIS IS NEEDED IN STANDARDIZING VESICLE SHAPES 
-        """
-        nv = X.shape[1]
-        # % compute inclination angle on an upsampled grid
-        N = X.shape[0] // 2
-        modes = torch.concatenate((torch.arange(0, N // 2), torch.tensor([0]), torch.arange(-N // 2 + 1, 0))).double()
+    # def getPrincAxesGivenCentroid(self, X, center):
+    #     """Find the principal axes given centroid.
+    #     % GK: THIS IS NEEDED IN STANDARDIZING VESICLE SHAPES 
+    #     """
+    #     nv = X.shape[1]
+    #     # % compute inclination angle on an upsampled grid
+    #     N = X.shape[0] // 2
+    #     modes = torch.concatenate((torch.arange(0, N // 2), torch.tensor([0]), torch.arange(-N // 2 + 1, 0))).double()
         
-        tempX = torch.zeros_like(X)
-        tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - torch.mean(X[:X.shape[0] // 2], dim=0)
-        tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - torch.mean(X[X.shape[0] // 2:], dim=0)
+    #     tempX = torch.zeros_like(X)
+    #     tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - torch.mean(X[:X.shape[0] // 2], dim=0)
+    #     tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - torch.mean(X[X.shape[0] // 2:], dim=0)
 
-        multiple_V = torch.zeros((2,nv), dtype=torch.float64)
-        for k in range(nv):
-            x = tempX[:N, k]
-            y = tempX[N:, k]
+    #     multiple_V = torch.zeros((2,nv), dtype=torch.float64)
+    #     for k in range(nv):
+    #         x = tempX[:N, k]
+    #         y = tempX[N:, k]
             
-            x -= center[0,k]
-            y -= center[1,k]
+    #         x -= center[0,k]
+    #         y -= center[1,k]
             
-            Dx = torch.real(torch.fft.ifft(1j * modes * torch.fft.fft(x)))
-            Dy = torch.real(torch.fft.ifft(1j * modes * torch.fft.fft(y)))
-            jac = torch.sqrt(Dx ** 2 + Dy ** 2)
-            tx = Dx / jac
-            ty = Dy / jac
-            nx = ty
-            ny = -tx #Shan: n is the right hand side of t
-            rdotn = x * nx + y * ny
-            rho2 = x ** 2 + y ** 2
+    #         Dx = torch.real(torch.fft.ifft(1j * modes * torch.fft.fft(x)))
+    #         Dy = torch.real(torch.fft.ifft(1j * modes * torch.fft.fft(y)))
+    #         jac = torch.sqrt(Dx ** 2 + Dy ** 2)
+    #         tx = Dx / jac
+    #         ty = Dy / jac
+    #         nx = ty
+    #         ny = -tx #Shan: n is the right hand side of t
+    #         rdotn = x * nx + y * ny
+    #         rho2 = x ** 2 + y ** 2
 
-            J11 = 0.25 * torch.sum(rdotn * (rho2 - x * x) * jac) * 2 * torch.pi / N
-            J12 = 0.25 * torch.sum(rdotn * (-x * y) * jac) * 2 * torch.pi / N
-            J21 = 0.25 * torch.sum(rdotn * (-y * x) * jac) * 2 * torch.pi / N
-            J22 = 0.25 * torch.sum(rdotn * (rho2 - y * y) * jac) * 2 * torch.pi / N
+    #         J11 = 0.25 * torch.sum(rdotn * (rho2 - x * x) * jac) * 2 * torch.pi / N
+    #         J12 = 0.25 * torch.sum(rdotn * (-x * y) * jac) * 2 * torch.pi / N
+    #         J21 = 0.25 * torch.sum(rdotn * (-y * x) * jac) * 2 * torch.pi / N
+    #         J22 = 0.25 * torch.sum(rdotn * (rho2 - y * y) * jac) * 2 * torch.pi / N
 
-            J = torch.tensor([[J11, J12], [J21, J22]])
-            # Shan
-            D, V = torch.linalg.eig(J)
-            ind = torch.argmin(torch.abs((D)))
-            # % make sure that the first components of e-vectors have the same sign
-            multiple_V[:,k] = torch.real(V[:,ind])
+    #         J = torch.tensor([[J11, J12], [J21, J22]])
+    #         # Shan
+    #         D, V = torch.linalg.eig(J)
+    #         ind = torch.argmin(torch.abs((D)))
+    #         # % make sure that the first components of e-vectors have the same sign
+    #         multiple_V[:,k] = torch.real(V[:,ind])
             
-        return multiple_V
+    #     return multiple_V
     
+
+    
+
+    def getPrincAxesGivenCentroid(self, X, center):
+        """
+        Compute the principal axes given the centroid.
+        
+        Parameters:
+        o       : Object with a method `diffProp` that returns jacCent, tanCent, and curvCent
+        X       : 2D numpy array of shape (2N, nv)
+        center  : 2D numpy array of shape (2, nv)
+        
+        Returns:
+        V       : Principal axes as a 2D numpy array of shape (2, 1)
+        """
+        N = X.shape[0] // 2  # Number of points
+        nv = X.shape[1]  # Number of variables
+        multiple_V = torch.zeros((2,nv), dtype=torch.float64)
+        
+        for k in range(nv):
+            # Compute the centered coordinates
+            Xcent = torch.vstack((X[:N, k:k+1] - center[0, k], X[N:, k:k+1] - center[1, k])).to(X.device)
+            xCent = Xcent[:N]
+            yCent = Xcent[N:]
+            
+            # Compute differential properties
+            jacCent, tanCent, curvCent = self.diffProp(Xcent)
+            
+            # Normal vectors
+            nxCent = tanCent[N:]
+            nyCent = -tanCent[:N]
+            
+            # Dot product and rho^2
+            rdotn = xCent * nxCent + yCent * nyCent
+            rho2 = xCent**2 + yCent**2
+            
+            # Compute components of J
+            J11 = 0.25 * torch.sum(rdotn * (rho2 - xCent**2) * jacCent) * 2 * torch.pi / N
+            J12 = 0.25 * torch.sum(rdotn * (-xCent * yCent) * jacCent) * 2 * torch.pi / N
+            J21 = 0.25 * torch.sum(rdotn * (-yCent * xCent) * jacCent) * 2 * torch.pi / N
+            J22 = 0.25 * torch.sum(rdotn * (rho2 - yCent**2) * jacCent) * 2 * torch.pi / N
+            
+            # Assemble the Jacobian matrix
+            J = torch.tensor([[J11, J12], [J21, J22]])
+            
+            # Eigen decomposition
+            eig_vals, eig_vecs = torch.linalg.eig(J)
+            
+            # Select the eigenvector corresponding to the smallest eigenvalue
+            min_index = torch.argmin(torch.abs(eig_vals))
+            V = eig_vecs[:, min_index]
+            
+            # Store the result for the current variable
+            multiple_V[:,k] = torch.real(V)
+        
+        return multiple_V
+
     def getDXY(self, X):
         """Compute the derivatives of each component of X."""
         # % [Dx,Dy]=getDXY(X), compute the derivatives of each component of X 
@@ -362,11 +421,11 @@ class Curve:
                 zX = X[:N, k] + 1j * X[N:, k]
                 zXh = torch.fft.fft(zX) / N
                 zX = torch.zeros(N, dtype=torch.complex128, device=X.device)
-                for j in range(N):
-                    zX += zXh[j] * torch.exp(1j * modes[j] * theta)
-                X_out[:, [k]] = self.setXY(torch.real(zX)[:,None], torch.imag(zX)[:,None])
+                for jj in range(N):
+                    zX += zXh[jj] * torch.exp(1j * modes[jj] * theta)
+                X_out[:, k:k+1] = self.setXY(torch.real(zX)[:,None], torch.imag(zX)[:,None])
             else:
-                X_out[:, [k]] = X[:, [k]]
+                X_out[:, k:k+1] = X[:, k:k+1]
                 
                 # if u is not None:
                 #     zu = u[:N, k] + 1j * u[N:, k]
@@ -381,7 +440,63 @@ class Curve:
                 #     u[:, k] = self.setXY(torch.real(zu), torch.imag(zu))
         return X_out, allGood
 
-    def arcLengthParameter(o, x, y):
+
+    def cubic_spline_interp(self, x, y, x_new):
+        """
+        Perform cubic spline interpolation with not-a-knot boundary conditions.
+        
+        Parameters:
+            x (array-like): The known x-values (must be sorted in ascending order).
+            y (array-like): The known y-values.
+            x_new (array-like): The x-values to interpolate.
+
+        Returns:
+            np.array: Interpolated y-values at x_new.
+        """
+        n = len(x)
+        h = np.diff(x)   # Calculate segment lengths
+        b = np.diff(y) / h  # Calculate slopes
+
+        # Build the coefficient matrix A and the right-hand side vector rhs for cubic spline
+        A = np.zeros((n, n))
+        rhs = np.zeros(n)
+
+        # Not-a-knot boundary conditions at the start and end
+        A[0, 0], A[0, 1] = h[1], -(h[0] + h[1])
+        A[0, 2] = h[0]
+        rhs[0] = 0
+
+        A[-1, -3] = h[-1]
+        A[-1, -2], A[-1, -1] = -(h[-2] + h[-1]), h[-2]
+        rhs[-1] = 0
+
+        # Fill the tridiagonal matrix for the interior points
+        for i in range(1, n - 1):
+            A[i, i - 1] = h[i - 1]
+            A[i, i] = 2 * (h[i - 1] + h[i])
+            A[i, i + 1] = h[i]
+            rhs[i] = 3 * (b[i] - b[i - 1])
+
+        # Solve the linear system for c (the second derivatives at the knots)
+        c = np.linalg.solve(A, rhs)
+
+        # Calculate the spline coefficients for each segment
+        a = y[:-1]
+        b = b - (h * (2 * c[:-1] + c[1:])) / 3
+        d = (c[1:] - c[:-1]) / (3 * h)
+
+        # Interpolating at the new points
+        y_new = np.zeros_like(x_new)
+        for j, xj in enumerate(x_new):
+            # Find the segment that xj is in
+            i = np.searchsorted(x, xj) - 1
+            i = np.clip(i, 0, n - 2)  # Ensure i is within valid range
+            dx = xj - x[i]
+            y_new[j] = a[i] + b[i] * dx + c[i] * dx**2 + d[i] * dx**3
+
+        return y_new
+
+    def arcLengthParameter(self, x, y):
         """
         % theta = arcLengthParamter(o,x,y) finds a discretization of parameter
         % space theta so that the resulting geometry will be equispaced in
@@ -389,10 +504,10 @@ class Curve:
         """
         N = len(x)
         t = torch.arange(N, dtype=torch.float64, device=x.device) * 2 * torch.pi / N
-        _, _, length = o.geomProp(torch.concatenate((x, y))[:,None])
+        _, _, length = self.geomProp(torch.concatenate((x, y))[:,None])
         # Find total perimeter
         
-        Dx, Dy = o.getDXY(torch.concatenate((x, y))[:,None])
+        Dx, Dy = self.getDXY(torch.concatenate((x, y))[:,None])
         # Find derivative
         arc = torch.sqrt(Dx**2 + Dy**2)
         arch = torch.fft.fft(arc.reshape(-1))
@@ -403,21 +518,32 @@ class Curve:
         
         arc_length = torch.real(torch.fft.ifft(modes * arch) - torch.sum(modes * arch) / N + arch[0] * t / N)
         # print(arc_length)
-        z1 = torch.hstack([arc_length[-7:] - length, arc_length, arc_length[:7] + length])
+        z1 = torch.hstack([arc_length[-7:] - length, arc_length, arc_length[:7] + length]).cpu().numpy()
         z2 = torch.hstack([t[-7:] - 2 * torch.pi, t, t[:7] + 2 * torch.pi]).cpu().numpy()
         # % put in some overlap to account for periodicity
 
         # Interpolate to obtain equispaced points
-        dx = torch.diff(z1)
-        dx = abs(dx)
-        z1 = torch.cumsum(torch.concat((z1[[0]], dx)), dim=0).cpu().numpy()
-        if torch.any(dx <= 0):
-            print(dx)
-            print("haha")
+        # dx = torch.diff(z1)
+        # dx = abs(dx)
+        # dump_z1 = torch.cumsum(torch.concat((z1[[0]], dx)), dim=0).cpu().numpy()
+        # if torch.any(dx <= 0):
+        #     print(dx)
+        #     print("haha")
+
         theta = CubicSpline(z1, z2)(torch.arange(N).cpu() * length.cpu() / N)
 
+        # # Create interpolation function using cubic spline
+        # interpolation_function = interp1d(z1, z2, kind='cubic')  # 'cubic' is equivalent to MATLAB's 'spline'
+        # # Generate theta values with interpolation
+        # theta = interpolation_function(torch.arange(N).cpu() * length.cpu() / N)
+
+        # theta = self.cubic_spline_interp(z1, z2, torch.arange(N).cpu() * length.cpu() / N)
+
+        # theta = eng.interp1(z1.numpy(),z2, np.arange(N)*length.cpu().numpy()/N,'spline')
+        
         return theta, arc_length
 
+    
     def reparametrize(self, X, dX, maxIter=100):
         """Reparametrize to minimize the energy in the high frequencies."""
         # % [X,niter] = reparametrize applies the reparametrization with
