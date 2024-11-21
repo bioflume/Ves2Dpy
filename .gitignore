@@ -160,3 +160,7 @@ cython_debug/
 #.idea/
 *.m~
 *.asv
+*.mat
+*.bin
+matlab/shannets/.DS_Store
+*.pth

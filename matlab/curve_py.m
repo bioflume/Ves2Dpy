@@ -1,4 +1,4 @@
-classdef curve
+classdef curve_py
 % This class implements that basic calculus on the curve.
 % The basic data structure is a matrix X in which the columns 
 % represent periodic C^{\infty} closed curves with N points, 
@@ -45,6 +45,62 @@ for k = 1 : nv
 end
 
 end % getCenter
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function V = getPrincAxesGivenCentroid(o,X,center)
+N = numel(X(:,1))/2;
+nv = numel(X(1,:));
+% compute inclination angle on an upsampled grid
+for k = 1 : nv
+  Xcent = [X(1:end/2,k)-center(1,k); X(end/2+1:end,k)-center(2,k)];
+  
+  xCent = Xcent(1:end/2,k); yCent = Xcent(end/2+1:end,k);
+  [jacCent,tanCent,curvCent] = o.diffProp(Xcent);
+  
+  nxCent = tanCent(end/2+1:end); nyCent = -tanCent(1:end/2);
+  rdotn = xCent.*nxCent + yCent.*nyCent;
+  rho2 = xCent.^2 + yCent.^2;
+
+  J11 = 0.25*sum(rdotn.*(rho2 - xCent.*xCent).*jacCent)*2*pi/N;
+  J12 = 0.25*sum(rdotn.*(-xCent.*yCent).*jacCent)*2*pi/N;
+  J21 = 0.25*sum(rdotn.*(-yCent.*xCent).*jacCent)*2*pi/N;
+  J22 = 0.25*sum(rdotn.*(rho2 - yCent.*yCent).*jacCent)*2*pi/N;
+
+  J = [J11 J12; J21 J22];
+  [V,D] = eig(J);
+
+  [~,ind] = min(abs(diag(D)));
+  V = V(:,ind);
+end
+
+end % getPrincAxesGivenCentroid
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function center = getPhysicalCenterShan(o,X)
+% center = getCenter(o,X) finds the center of each capsule
+N = size(X,1)/2;
+nv = size(X,2);
+
+[jac,tan,curv] = o.diffProp(X);
+tanx = tan(1:end/2,:); tany = tan(end/2+1:end,:);
+nx = tany; ny = -tanx;
+x = X(1:end/2,:); y = X(end/2+1:end,:);
+
+
+
+center = zeros(2,nv);
+
+for k = 1 : nv
+    xv = (x(:,k));
+    yv = (y(:,k));
+    xdotn = xv.*nx(:,k); ydotn = yv.*ny(:,k);
+    xdotn_sum = sum(xdotn.*jac(:,k));
+    ydotn_sum = sum(ydotn.*jac(:,k));
+
+    center(1,k) = 0.5*sum(xv.*xdotn.*jac(:,k))./xdotn_sum;
+    center(2,k) = 0.5*sum(yv.*ydotn.*jac(:,k))./ydotn_sum;
+end
+
+end % getPhysicalCenterShan
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function IA = getIncAngle2(o,X)
@@ -135,12 +191,36 @@ x = X(1:end/2,:);
 y = X(end/2+1:end,:);
 N = size(x,1);
 nv = size(x,2);
-IK = fft1.modes(N,nv);
-Dx = fft1.diffFT(x,IK);
-Dy = fft1.diffFT(y,IK);
+IK = fft1_py.modes(N,nv);
+Dx = fft1_py.diffFT(x,IK);
+Dy = fft1_py.diffFT(y,IK);
 
 end % getDXY
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function Xfinal = upsThenFilterShape(o,X,Nup,modeCut)
+% delete high frequencies from the vesicle shape
+N = size(X,1)/2;
+nv = size(X,2);
+
+% modeCut = 32; works fine; Nup = 512;
+
+modes = [(0:Nup/2-1) (-Nup/2:-1)];
+xup = interpft(X(1:end/2,:),Nup);
+yup = interpft(X(end/2+1:end,:),Nup);
+
+Xfinal = zeros(size(X));
+
+for k = 1:nv
+  z = xup(:,k) + 1i*yup(:,k);
+  z = fft(z);
+  z(abs(modes) > modeCut) = 0;
+  z = ifft(z);
+  Xfinal(1:end/2,k) = interpft(real(z),N);
+  Xfinal(end/2+1:end,k) = interpft(imag(z),N);
+end
+
+end % filterShape
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [jacobian,tangent,curvature] = diffProp(o,X)
 % [jacobian,tangent,curvature] = diffProp(X) returns differential
@@ -167,9 +247,9 @@ if nargout>1  % if user requires tangent
 end
 
 if nargout>2  % if user requires curvature
-  IK = fft1.modes(N,nv);
-  DDx = curve.arcDeriv(Dx,1,ones(N,nv),IK);
-  DDy = curve.arcDeriv(Dy,1,ones(N,nv),IK);
+  IK = fft1_py.modes(N,nv);
+  DDx = curve_py.arcDeriv(Dx,1,ones(N,nv),IK);
+  DDy = curve_py.arcDeriv(Dy,1,ones(N,nv),IK);
   curvature = (Dx.*DDy - Dy.*DDx)./(jacobian.^3);
 end
 % curvature of the curve
@@ -347,8 +427,8 @@ jac = o.diffProp(X);
 jac1 = jac;
 tol = 1e-10;
 
-% u = [];
-% sigma = [];
+u = [];
+sigma = [];
 
 
 for k = 1:nv
@@ -512,6 +592,7 @@ dotProd = prod(1:N)+prod(N+1:2*N);
 g = gradE - normals.*[dotProd;dotProd];
 end % end computeProjectedGradEnergy
 
+end % methods
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 methods (Static)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

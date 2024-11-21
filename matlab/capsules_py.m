@@ -1,4 +1,4 @@
-classdef capsules < handle
+classdef capsules_py < handle
 % This class implements standard calculations that need to
 % be done to a vesicle, solid wall, or a collection of arbitrary
 % target points (such as tracers or pressure/stress targets)
@@ -31,7 +31,7 @@ end %properties
 methods
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function o = capsules(X,sigma,u,kappa,viscCont)
+function o = capsules_py(X,sigma,u,kappa,viscCont)
 % capsules(X,sigma,u,kappa,viscCont) sets parameters and options for
 % the class; no computation takes place here.  
 %
@@ -41,7 +41,7 @@ function o = capsules(X,sigma,u,kappa,viscCont)
 o.N = size(X,1)/2;              % points per vesicle
 o.nv = size(X,2);               % number of vesicles
 o.X = X;                        % position of vesicle
-oc = curve;
+oc = curve_py;
 % Jacobian, tangent, and curvature
 [o.sa,o.xt,o.cur] = oc.diffProp(o.X);
 o.isa = 1./o.sa;
@@ -59,7 +59,7 @@ o.length = min(len);
 
 % ordering of the fourier modes.  It is faster to compute once here and
 % pass it around to the fft differentitation routine
-o.IK = fft1.modes(o.N,o.nv);
+o.IK = fft1_py.modes(o.N,o.nv);
 
 
 end % capsules
@@ -78,8 +78,8 @@ function ben = bendingTerm(o,f)
 % ben = bendingTerm(f) computes the term due to bending
 % -kappa*fourth-order derivative
 
-ben = [-o.kappa*curve.arcDeriv(f(1:o.N,:),4,o.isa,o.IK);...
-  -o.kappa*curve.arcDeriv(f(o.N+1:2*o.N,:),4,o.isa,o.IK)];
+ben = [-o.kappa*curve_py.arcDeriv(f(1:o.N,:),4,o.isa,o.IK);...
+  -o.kappa*curve_py.arcDeriv(f(o.N+1:2*o.N,:),4,o.isa,o.IK)];
 
 end % bendingTerm
  
@@ -88,8 +88,8 @@ function ten = tensionTerm(o,sig)
 % ten = tensionTerm(o,sig) computes the term due to tension (\sigma *
 % x_{s})_{s}
 
-ten = [curve.arcDeriv(sig.*o.xt(1:o.N,:),1,o.isa,o.IK);...
-    curve.arcDeriv(sig.*o.xt(o.N+1:2*o.N,:),1,o.isa,o.IK)];
+ten = [curve_py.arcDeriv(sig.*o.xt(1:o.N,:),1,o.isa,o.IK);...
+    curve_py.arcDeriv(sig.*o.xt(o.N+1:2*o.N,:),1,o.isa,o.IK)];
 
 end % tensionTerm
 
@@ -98,11 +98,11 @@ function f = surfaceDiv(o,f)
 % divf = surfaceDiv(f) computes the surface divergence of f with respect
 % to the vesicle stored in object o.  f has size N x nv
 
-oc = curve; 
+oc = curve_py; 
 [fx,fy] = oc.getXY(f);
 [tangx,tangy] = oc.getXY(o.xt);
-f = curve.arcDeriv(fx,1,o.isa,o.IK).*tangx + ...
-  curve.arcDeriv(fy,1,o.isa,o.IK).*tangy;
+f = curve_py.arcDeriv(fx,1,o.isa,o.IK).*tangx + ...
+  curve_py.arcDeriv(fy,1,o.isa,o.IK).*tangy;
 
 end % surfaceDiv
 
@@ -118,7 +118,7 @@ Ben = zeros(2*o.N,2*o.N,o.nv);
 Ten = zeros(2*o.N,o.N,o.nv);
 Div = zeros(o.N,2*o.N,o.nv);
 
-D1 = fft1.fourierDiff(o.N);
+D1 = fft1_py.fourierDiff(o.N);
 
 for k = 1:o.nv
   % compute single arclength derivative matrix
@@ -161,7 +161,7 @@ function [NearSelf,NearOther] = getZone(vesicle1,vesicle2,relate)
   N1 = vesicle1.N; % number of source/target points
   nv1 = vesicle1.nv; % number of source/target vesicles
   X1 = vesicle1.X; % source and target points
-  oc = curve;
+  oc = curve_py;
   [xsou,ysou] = oc.getXY(X1); 
   % separate targets into x and y coordinates
   
@@ -539,7 +539,7 @@ function [dist,nearestx,nearesty,theta] = ...
 % point on the discrete mesh which is used as an initial guess
 
 N = size(X,1)/2; % Number of points per vesicle
-A = lagrangeInterp;
+A = o.lagrangeInterp;
 interpOrder = size(A,1);
 % need interpolation matrix and its size
 
@@ -594,7 +594,7 @@ dist = sqrt((nearestx - xtar)^2 + (nearesty - ytar)^2);
 
 end % closestPnt
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function LP = lagrangeInterp
+function LP = lagrangeInterp(o)
 % interpMap = lagrangeInterp builds the Lagrange interpolation
 % matrix that takes seven function values equally distributed
 % in [0,1] and returns the seven polynomial coefficients
