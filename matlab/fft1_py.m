@@ -1,4 +1,4 @@
-classdef fft1 < handle
+classdef fft1_py < handle
 % class implements fft transformations.  This includes computing
 % the fourier differentiation matrix, doing interplation required
 % by Alpert's quadrature rules, and defining the Fourier frequencies

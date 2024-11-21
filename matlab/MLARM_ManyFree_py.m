@@ -15,6 +15,8 @@ tenSelfNetInputNorm
 tenSelfNetOutputNorm
 tenAdvNetInputNorm
 tenAdvNetOutputNorm
+area0
+len0
 end
 
 methods
@@ -55,7 +57,7 @@ oc = o.oc;
 vback = o.vinf(Xold);
 
 % build vesicle class at the current step
-vesicle = capsules(Xold,[],[],o.kappa,1,0);
+vesicle = capsules_py(Xold,[],[],o.kappa,1);
 nv = vesicle.nv;
 N = vesicle.N;
 
@@ -63,12 +65,22 @@ N = vesicle.N;
 fBend = vesicle.tracJump(Xold,zeros(N,nv));
 fTen = vesicle.tracJump(zeros(2*N,nv),tenOld);
 tracJump = fBend+fTen; % total elastic force
+
+% Filter the tractionJump
+tracJump = oc.upsThenFilterShape(tracJump,4*N,64);
 % -----------------------------------------------------------
 % 1) Explicit Tension at the Current Step
 
 % Calculate velocity induced by vesicles on each other due to elastic force
 % use neural networks to calculate near-singular integrals
-farFieldtracJump = o.computeStokesInteractions(vesicle, tracJump, op, oc);
+[velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, transNear, rotateNear, ...
+    rotCentNear, scalingNear, sortIdxNear] = o.predictNearLayers(vesicle.X); 
+farFieldtracJump = o.computeStokesInteractions(vesicle, tracJump, ...
+    velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, transNear, rotateNear, ...
+    rotCentNear, scalingNear, sortIdxNear);
+
+% filter the far-field
+farFieldtracJump = oc.upsThenFilterShape(farFieldtracJump,4*N,16);
 
 % Solve for tension
 vBackSolve = o.invTenMatOnVback(Xold, vback + farFieldtracJump);
@@ -82,7 +94,11 @@ tracJump = fBend + fTen;
 
 % Calculate far-field again and correct near field before advection
 % use neural networks to calculate near-singular integrals
-farFieldtracJump = o.computeStokesInteractions(vesicle, tracJump, oc);
+farFieldtracJump = o.computeStokesInteractions(vesicle, tracJump, ...
+    velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, transNear, rotateNear, ...
+    rotCentNear, scalingNear, sortIdxNear);
+% filter the far-field
+farFieldtracJump = oc.upsThenFilterShape(farFieldtracJump,4*N,16);
 
 % Total background velocity
 vbackTotal = vback + farFieldtracJump;
@@ -91,12 +107,31 @@ vbackTotal = vback + farFieldtracJump;
 % 1) COMPUTE THE ACTION OF dt*(1-M) ON Xold  
 Xadv = o.translateVinfwTorch(Xold,vbackTotal);
 
+% filter shape
+Xadv = oc.upsThenFilterShape(Xadv,4*N,16);
+
 % 2) COMPUTE THE ACTION OF RELAX OP. ON Xold + Xadv
 Xnew = o.relaxWTorchNet(Xadv);    
 
+% Redistribute points equally in arc-length
+XnewO = Xnew;
+for it = 1 : 5
+  Xnew = oc.redistributeArcLength(Xnew);
+end
+Xnew = oc.alignCenterAngle(XnewO,Xnew);
+
+
+% area-length correction
+Xnew = oc.correctAreaAndLength(Xnew,o.area0,o.len0);
+
+
+% filter shape
+Xnew = oc.upsThenFilterShape(Xnew,4*N,64);
+
 end % DNNsolveTorchMany
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [xlayers, ylayers, velx, vely] = predictNearLayersWTorchNet(o, X, tracJump)
+function [velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, trans, rotate, rotCent, scaling, sortIdx] = predictNearLayers(o, X)
+% prediction of the velocity in the near-field layers (using merged net)
 N = numel(X(:,1))/2;
 nv = numel(X(1,:));
 
@@ -105,7 +140,7 @@ oc = o.oc;
 in_param = o.nearNetInputNorm;
 out_param = o.nearNetOutputNorm;
 
-maxLayerDist = sqrt(1/N); % length = 1, h = 1/Nnet;
+maxLayerDist = 1/N; % length = 1, h = 1/N;
 
 % Predictions on three layers
 nlayers = 3;
@@ -122,7 +157,7 @@ sortIdx = zeros(N,nv);
 % Create the layers around a vesicle on which velocity calculated
 tracersX = zeros(2*N,3,nv);
 for k = 1 : nv
-  [Xstand(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = o.standardizationStep(X(:,k),128);
+  [Xstand(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = o.standardizationStep(X(:,k),N);
   [~,tang] = oc.diffProp(Xstand(:,k));
   nx = tang(N+1:2*N);
   ny = -tang(1:N);
@@ -134,17 +169,84 @@ for k = 1 : nv
 end
 
 % Normalize input
-input_net = zeros(nv,2,N);
+input_net = zeros(nv,2*N,N);
 
-for k = 1 : nv
-  input_net(k,1,:) = (Xstand(1:end/2,k)-in_param(1,1))/in_param(1,2);
-  input_net(k,2,:) = (Xstand(end/2+1:end,k)-in_param(1,3))/in_param(1,4);
+for ij = 1 : N
+  for k = 1 : nv
+    input_net(k,(ij-1)*2+1,:) = (Xstand(1:end/2,k)-in_param(1,1))/in_param(1,2);
+    input_net(k,2*ij,:) = (Xstand(end/2+1:end,k)-in_param(1,3))/in_param(1,4);
+  end
 end
+
+
 
 % How many modes to be used
 modes = [(0:N/2-1) (-N/2:-1)];
-modesInUse = 16;
+modesInUse = N;
 modeList = find(abs(modes)<=modesInUse);
+
+
+input_conv = py.numpy.array(input_net);
+[Xpredict] = pyrunfile("near_vel_allModesAth_predict.py","output_list",input_shape=input_conv);
+Xpredict = double(Xpredict);
+
+for k = 1 : nv
+  velx_real{k} = zeros(N,N,3);
+  vely_real{k} = zeros(N,N,3);
+  velx_imag{k} = zeros(N,N,3);
+  vely_imag{k} = zeros(N,N,3);
+end
+
+% denormalize output
+for ij = 1 : numel(modeList)
+  imode = modeList(ij);
+  pred = Xpredict(:,(ij-1)*12+1:ij*12,:);
+  % its size is (nv x 12 x 128) 
+  % channel 1-3: vx_real_layers 0, 1, 2
+  % channel 4-6; vy_real_layers 0, 1, 2
+  % channel 7-9: vx_imag_layers 0, 1, 2
+  % channel 10-12: vy_imag_layers 0, 1, 2
+
+  % denormalize output
+  for k = 1 : nv
+    velx_real{k}(:,imode,1) = (pred(k,1,:)*out_param(imode,2,1))  + out_param(imode,1,1);
+    velx_real{k}(:,imode,2) = (pred(k,2,:)*out_param(imode,2,2))  + out_param(imode,1,2);
+    velx_real{k}(:,imode,3) = (pred(k,3,:)*out_param(imode,2,3))  + out_param(imode,1,3);
+    vely_real{k}(:,imode,1) = (pred(k,4,:)*out_param(imode,2,4))  + out_param(imode,1,4);
+    vely_real{k}(:,imode,2) = (pred(k,5,:)*out_param(imode,2,5))  + out_param(imode,1,5);
+    vely_real{k}(:,imode,3) = (pred(k,6,:)*out_param(imode,2,6))  + out_param(imode,1,6);
+
+    velx_imag{k}(:,imode,1) = (pred(k,7,:)*out_param(imode,2,7))  + out_param(imode,1,7);
+    velx_imag{k}(:,imode,2) = (pred(k,8,:)*out_param(imode,2,8))  + out_param(imode,1,8);
+    velx_imag{k}(:,imode,3) = (pred(k,9,:)*out_param(imode,2,9))  + out_param(imode,1,9);
+    vely_imag{k}(:,imode,1) = (pred(k,10,:)*out_param(imode,2,10))  + out_param(imode,1,10);
+    vely_imag{k}(:,imode,2) = (pred(k,11,:)*out_param(imode,2,11))  + out_param(imode,1,11);
+    vely_imag{k}(:,imode,3) = (pred(k,12,:)*out_param(imode,2,12))  + out_param(imode,1,12);
+  end
+end
+
+% outputs
+% velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, trans, rotate, rotCent, scaling, sortIdx
+
+xlayers = zeros(N,3,nv);
+ylayers = zeros(N,3,nv);
+for k = 1 : nv
+  for il = 1 : 3
+     Xl = o.destandardize(tracersX(:,il,k),trans(:,k),rotate(k),rotCent(:,k),scaling(k),sortIdx(:,k));
+     xlayers(:,il,k) = Xl(1:end/2);
+     ylayers(:,il,k) = Xl(end/2+1:end);
+  end
+end
+
+
+
+end % predictNearLayers
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [velx, vely] = buildVelocityInNear(o,tracJump, velx_real,...
+        vely_real, velx_imag, vely_imag, trans, rotate, rotCent, scaling, sortIdx)
+
+nv = numel(rotate);
+N = numel(sortIdx(:,1));
 
 % standardize tracJump
 fstandRe = zeros(N, nv);
@@ -157,44 +259,9 @@ for k = 1 : nv
   fstandIm(:,k) = imag(zh);
 end
 
-input_conv = py.numpy.array(input_net);
-[Xpredict] = pyrunfile("near_vel_predict.py","output_list",input_shape=input_conv,num_ves=py.int(nv));
-
-% initialize ouputs
-for k = 1 : nv
-  velx_real{k} = zeros(N,N,3);
-  vely_real{k} = zeros(N,N,3);
-  velx_imag{k} = zeros(N,N,3);
-  vely_imag{k} = zeros(N,N,3);
-end
-
-% denormalize output
-for ij = 1 : numel(modList)
-  imode = modeList(ij);
-  pred = double(Xpredict{ij});
-  % its size is (nv x 12 x 128) 
-  % channel 1-3: vx_real_layers 0, 1, 2
-  % channel 4-6; vy_real_layers 0, 1, 2
-  % channel 7-9: vx_imag_layers 0, 1, 2
-  % channel 10-12: vy_imag_layers 0, 1, 2
-
-  % denormalize output
-  for k = 1 : nv
-    for ic = 1 : 3
-      velx_real{k}(:,imode,ic) = (pred(k,0+ic,:)*out_param(imode,2,0+ic))  + out_param(imode,1,0+ic);
-      vely_real{k}(:,imode,ic) = (pred(k,3+ic,:)*out_param(imode,2,3+ic))  + out_param(imode,1,3+ic);
-      
-      velx_imag{k}(:,imode,ic) = (pred(k,6+ic,:)*out_param(imode,2,6+ic))  + out_param(imode,1,6+ic);
-      vely_imag{k}(:,imode,ic) = (pred(k,9+ic,:)*out_param(imode,2,9+ic))  + out_param(imode,1,9+ic);
-    end
-  end
-end
-
 
 velx = zeros(N,3,nv); 
 vely = zeros(N,3,nv);
-xlayers = zeros(N,3,nv);
-ylayers = zeros(N,3,nv);
 for k = 1 : nv
   velx_stand = zeros(N,3);
   vely_stand = zeros(N,3);
@@ -205,7 +272,6 @@ for k = 1 : nv
      vx = zeros(N,1);
      vy = zeros(N,1);
      
-     % destandardize
      vx(sortIdx(:,k)) = velx_stand(:,il);
      vy(sortIdx(:,k)) = vely_stand(:,il);
 
@@ -213,32 +279,27 @@ for k = 1 : nv
      
      VelRot = o.rotationOperator(VelBefRot, -rotate(k), [0;0]);
      velx(:,il,k) = VelRot(1:end/2); vely(:,il,k) = VelRot(end/2+1:end);
-        
-     Xl = o.destandardize(tracersX(:,il,k),trans(:,k),rotate(k),rotCent(:,k),scaling(k),sortIdx(:,k));
-     xlayers(:,il,k) = Xl(1:end/2);
-     ylayers(:,il,k) = Xl(end/2+1:end);
   end
 end
 
 
-end % predictNearLayersWTorchNet
+end % buildVelocityInNear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function farField = computeStokesInteractions(o,vesicle, tracJump, oc)
+function farField = computeStokesInteractions(o,vesicle, tracJump, ...
+        velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, trans,...
+        rotate,rotCent, scaling, sortIdx)
 
-disp('Near-singular interaction through interpolation and network')
 N = vesicle.N;
 nv = vesicle.nv;
-maxLayerDist = sqrt(vesicle.length/vesicle.N);
-
-% Tangent
-[~,tang] = oc.diffProp(vesicle.X);
-% Normal
-nx = tang(N+1:2*N,:);
-ny = -tang(1:N,:);
 
 xvesicle = vesicle.X(1:end/2,:); yvesicle = vesicle.X(end/2+1:end,:);
 
-% Compute near/far hydro interactions without any correction
+% Compute near/far hydro interactions
+% with upsampling by 2
+NearV2V = vesicle.getZone([],1);    
+zone = NearV2V.zone;
+
+
 % First calculate the far-field
 farField = zeros(2*N,nv);
 for k = 1 : nv
@@ -246,94 +307,74 @@ for k = 1 : nv
   farField(:,k) = o.exactStokesSL(vesicle, tracJump, vesicle.X(:,k), K);
 end
 
-% find the outermost layers of all vesicles, then perform Laplace kernel
-Xlarge = zeros(2*vesicle.N,nv);
+% Predict velocity on layers
+% Get velocity on layers once predicted
+[velx, vely] = o.buildVelocityInNear(tracJump, velx_real, vely_real, ...
+    velx_imag, vely_imag, trans, rotate, rotCent, scaling, sortIdx);
+
+opX = []; opY = [];
 for k = 1 : nv
-Xlarge(:,k) = [xvesicle(:,k)+nx(:,k)*maxLayerDist; yvesicle(:,k)+ny(:,k)*maxLayerDist];  
+ % layers around the vesicle j 
+ Xin = [reshape(xlayers(:,:,k),1,3*N); reshape(ylayers(:,:,k),1,3*N)];
+ velXInput = reshape(velx(:,:,k), 1, 3*N); 
+ velYInput = reshape(vely(:,:,k), 1, 3*N);  
+  
+ opX{k} = rbfcreate(Xin,velXInput,'RBFFunction','linear');
+ opY{k} = rbfcreate(Xin,velYInput,'RBFFunction','linear');
 end
 
-% Ray Casting to find near field
-iCallNear = zeros(nv,1);
-for j = 1 : nv % loop over the outermost layer around each vesicle
-  % vesicles other than the j
-  K = [(1:j-1) (j+1:nv)];
-  % Reorder points
-  S = zeros(2*vesicle.N,1);
-  S(1:2:end) = Xlarge(1:end/2,j);
-  S(2:2:end) = Xlarge(end/2+1:end,j);
+nearField = zeros(size(farField));
 
-  for k = K
-    queryX{k} = []; % k's points in j's inside
-    idsInStore{k} = [];
-
-    % also store which vesicle contains k's points
-    nearVesIds{k} = [];
-
-    cnt = 1; % counter
-    for p = 1 : vesicle.N
-      flag = rayCasting([xvesicle(p,k);yvesicle(p,k)],S);  
-      if flag
-        idsInStore{k}(cnt,1) = p;
-        % points where we need interpolation  
-        queryX{k}(1,cnt) = xvesicle(p,k);
-        queryX{k}(2,cnt) = yvesicle(p,k);
-        nearVesIds{k}(cnt,1) = j; 
-        cnt = cnt + 1;
-        iCallNear(k) = 1;    
+for k1 = 1 : nv
+  K = [(1:k1-1) (k1+1:nv)];
+  for k2 = K
+    % points on vesicle k2 close to k1  
+    J = find(zone{k1}(:,k2) == 1);  
+    if numel(J) ~= 0
+      % need tp subtract off contribution due to vesicle k1 since its layer
+      % potential will be evaulated through interpolation
+      potTar = o.exactStokesSL(vesicle, tracJump, [xvesicle(J,k2);yvesicle(J,k2)],k1);
+      nearField(J,k2) = nearField(J,k2) - potTar(1:numel(J));
+      nearField(J+N,k2) = nearField(J+N,k2) - potTar(numel(J)+1:end);
+         
+      % now interpolate
+      for i = 1 : numel(J)
+        pointsIn = [xvesicle(J(i),k2);yvesicle(J(i),k2)];
+        % interpolate for the k2th vesicle's points near to the k1th vesicle
+        rbfVelX = rbfinterp(pointsIn, opX{k1});
+        rbfVelY = rbfinterp(pointsIn, opY{k1});
+        nearField(J(i),k2) = nearField(J(i),k2) + rbfVelX;
+        nearField(J(i)+N,k2) = nearField(J(i)+N,k2) + rbfVelY; 
       end
-    end
-  end
-end
+    end % if numel(J)
 
-% if needed to call near-singular correction:
-if any(iCallNear)
-  [xlayers, ylayers, velx, vely] = o.predictNearLayersWTorchNet(vesicle.X, tracJump);
+  end % for k2
+end % for k1
 
-  for k = 1 : nv 
-    if iCallNear(k)
-    idsIn = idsInStore{k};
-    pointsIn = queryX{k};
-    vesId = unique(nearVesIds{k});
-    
 
-    % layers around the vesicle j 
-    Xin = [reshape(xlayers(:,:,vesId),1,3*N); reshape(ylayers(:,:,vesId),1,3*N)];
-    velXInput = reshape(velx(:,:,vesId), 1, 3*N); 
-    velYInput = reshape(vely(:,:,vesId), 1, 3*N);  
-  
-    opX = rbfcreate(Xin,velXInput,'RBFFunction','linear');
-    opY = rbfcreate(Xin,velYInput,'RBFFunction','linear');
 
-    % interpolate for the kth vesicle's points near to the Kth vesicle
-    rbfVelX = rbfinterp(pointsIn, opX);
-    rbfVelY = rbfinterp(pointsIn, opY);
-  
-    % replace the interpolated one with the direct calculation
-    farX = farField(1:end/2,k); farY = farField(end/2+1:end,k);
-    farX(idsIn) = rbfVelX;
-    farY(idsIn) = rbfVelY;
-    farField(:,k) = [farX; farY];
-    end
-  end % end if any(idsIn)
-
-end % for k = 1 : nv
+% finally add the corrected nearfield to the farfield
+farField = farField + nearField;
 
 
 end % computeStokesInteractions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function Xnew = translateVinfwTorch(o,Xold,vinf)
+
 % Xinput is equally distributed in arc-length
 % Xold as well. So, we add up coordinates of the same points.
+% Uses merged network
+
 N = numel(Xold(:,1))/2;
 nv = numel(Xold(1,:));
 oc = o.oc;
 
-in_param = o.advNetInputNorm;
-out_param = o.advNetOutputNorm;
+theta = (0:N-1)'/N*2*pi;
+ks = (0:N-1)';
+basis = 1/N*exp(1i*theta*ks');
 
-% If we only use some modes
 modes = [(0:N/2-1) (-N/2:-1)];
-modesInUse = 16;
+modesInUse = N;
 modeList = find(abs(modes)<=modesInUse);
 
 % Standardize input
@@ -343,53 +384,56 @@ rotate = zeros(nv,1);
 rotCent = zeros(2,nv);
 trans = zeros(2,nv);
 sortIdx = zeros(N,nv);
+
 for k = 1 : nv
   [Xstand(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = o.standardizationStep(Xold(:,k),N);
 end
 
+in_param = o.advNetInputNorm;
+out_param = o.advNetOutputNorm;
+
+% input normalization
+x_mean = in_param(1,1);
+x_std = in_param(1,2);
+y_mean = in_param(1,3);
+y_std = in_param(1,4);
 
 % Normalize input
-input_list = []; 
-cnt = 1;
-for imode = modeList
-  if imode ~= 1
-  input_net = zeros(nv,2,128);  
-  x_mean = in_param(imode-1,1);
-  x_std = in_param(imode-1,2);
-  y_mean = in_param(imode-1,3);
-  y_std = in_param(imode-1,4);
+input_net = zeros(nv,2*(N-1),2*N);  
+for ij = 1 : N-1
   for k = 1 : nv
-    input_net(k,1,:) = (Xstand(1:end/2,k)-x_mean)/x_std;
-    input_net(k,2,:) = (Xstand(end/2+1:end,k)-y_mean)/y_std;
-  end
-  input_list{cnt} = py.numpy.array(input_net);
-  cnt = cnt + 1;
-  end
-end % imode
+    input_net(k,2*(ij-1)+1,1:N) = (Xstand(1:end/2,k)-x_mean)/x_std;
+    input_net(k,2*(ij-1)+1,N+1:2*N) = (Xstand(end/2+1:end,k)-y_mean)/y_std;
 
+    rr = real(basis(:,ij+1));
+    ii = imag(basis(:,ij+1));
 
-tS = tic;
-[Xpredict] = pyrunfile("advect_predict.py","output_list",input_shape=input_list,num_ves=py.int(nv));
-tPyCall = toc(tS);
+    input_net(k,2*ij,1:N) = rr;
+    input_net(k,2*ij,N+1:2*N) = ii;
+  end % imode
+end
 
-disp(['Calling python to predict MV takes ' num2str(tPyCall) ' seconds'])
-% we have 128 modes
+input_conv = py.numpy.array(input_net);
+[Xpredict] = pyrunfile("advect_predict_merged.py","output_list",input_shape=input_conv,num_ves=py.int(nv));
+
+allmodes_pred = double(Xpredict);
+
 % Approximate the multiplication M*(FFTBasis)     
 Z11r = zeros(N,N,nv); Z12r = Z11r;
 Z21r = Z11r; Z22r = Z11r;
 
-tS = tic;
-for ij = 1 : numel(modeList)-1
+
+for ij = 1 : N-1
   
   imode = modeList(ij+1); % mode index # skipping the first mode
-  pred = double(Xpredict{ij}); % size(pred) = [nv 2 256]
+  pred = allmodes_pred(:,2*(ij-1)+1:2*ij,:); % size(pred) = [1 2 256]
 
 
   % denormalize output
-  real_mean = out_param(imode-1,1);
-  real_std = out_param(imode-1,2);
-  imag_mean = out_param(imode-1,3);
-  imag_std = out_param(imode-1,4);
+  real_mean = out_param(ij,1);
+  real_std = out_param(ij,2);
+  imag_mean = out_param(ij,3);
+  imag_std = out_param(ij,4);
   
   for k = 1 : nv
     % first channel is real
@@ -403,12 +447,12 @@ for ij = 1 : numel(modeList)-1
     Z22r(:,imode,k) = pred(k,2,end/2+1:end);
   end
 end
-tOrganize = toc(tS);
-disp(['Organizing MV output takes ' num2str(tOrganize) ' seconds'])
+
 
 % Take fft of the velocity (should be standardized velocity)
 % only sort points and rotate to pi/2 (no translation, no scaling)
 Xnew = zeros(size(Xold));
+MVinfStore = Xnew;
 for k = 1 : nv
   vinfStand = o.standardize(vinf(:,k),[0;0],rotate(k),[0;0],1,sortIdx(:,k));
   z = vinfStand(1:end/2)+1i*vinfStand(end/2+1:end);
@@ -417,17 +461,16 @@ for k = 1 : nv
   V1 = real(zh); V2 = imag(zh);
   % Compute the approximate value of the term M*vinf
   MVinfStand = [Z11r(:,:,k)*V1+Z12r(:,:,k)*V2; Z21r(:,:,k)*V1+Z22r(:,:,k)*V2];
+  
   % Need to destandardize MVinf (take sorting and rotation back)
   MVinf = zeros(size(MVinfStand));
   MVinf([sortIdx(:,k);sortIdx(:,k)+N]) = MVinfStand;
   MVinf = o.rotationOperator(MVinf,-rotate(k),[0;0]);
-
-  Xnew(:,k) = Xold(:,k) + o.dt * vinf(:,k) - o.dt*MVinf;
+  MVinfStore(:,k) = MVinf;  
+  Xnew(:,k) = Xold(:,k) + o.dt * vinf(:,k) - o.dt*MVinf;   
 end
 
-% XnewStand = Xstand + o.dt*vinfStand - o.dt*MVinf;
-% Update the position
-% Xnew = o.destandardize(XnewStand,trans,rotate,scaling,sortIdx);
+
 end % translateVinfwTorch
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function Xnew = relaxWTorchNet(o,Xmid)  
@@ -444,7 +487,7 @@ sortIdx = zeros(N,nv);
 
 for k = 1 : nv
   [Xin(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = ...
-    o.standardizationStep(Xmid(:,k),128);
+    o.standardizationStep(Xmid(:,k),N);
 end
 
 % INPUT NORMALIZATION INFO
@@ -503,149 +546,137 @@ end
 
 end % relaxWTorchNet
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function vBackSolve = invTenMatOnVback(o,X,vinf)
+function tension = invTenMatOnVback(o,X,vinf)
+
 % Approximate inv(Div*G*Ten)*Div*vExt 
 % input X is non-standardized
-    
-% number of vesicles
+N = numel(X(:,1))/2;
 nv = numel(X(1,:));
-% number of points of exact solve
-N = numel(X(:,1))/2;    
-% number of points for network
+oc = o.oc;
 
 % Modes to be called
 modes = [(0:N/2-1) (-N/2:-1)];
-modesInUse = 16;
+modesInUse = N;
 modeList = find(abs(modes)<=modesInUse);
 
-% Standardize vesicle Xmid
+% Standardize input
 Xstand = zeros(size(X));
-
-scaling = zeros(nv,1); rotate = zeros(nv,1); 
-rotCent = zeros(2,nv); trans = zeros(2,nv);
+scaling = zeros(nv,1);
+rotate = zeros(nv,1);
+rotCent = zeros(2,nv);
+trans = zeros(2,nv);
 sortIdx = zeros(N,nv);
 
 for k = 1 : nv
-  [Xstand(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = ...
-    o.standardizationStep(X(:,k),128);
+  [Xstand(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = o.standardizationStep(X(:,k),N);
 end
 
 in_param = o.tenAdvNetInputNorm;
 out_param = o.tenAdvNetOutputNorm;
 
 % Normalize input
-input_list = []; 
-cnt = 1;
-for imode = modeList
-  if imode ~= 1
-  input_net = zeros(nv,2,128);  
-  x_mean = in_param(imode-1,1);
-  x_std = in_param(imode-1,2);
-  y_mean = in_param(imode-1,3);
-  y_std = in_param(imode-1,4);
+input_net = zeros(nv,2*(N-1),N);
+
+for imode = 1 : N-1 
   for k = 1 : nv
-    input_net(k,1,:) = (Xstand(1:end/2,k)-x_mean)/x_std;
-    input_net(k,2,:) = (Xstand(end/2+1:end,k)-y_mean)/y_std;
+    input_net(k,2*(imode-1)+1,:) = (Xstand(1:end/2,k)-in_param(1,1))/in_param(1,2);
+    input_net(k,2*imode,:) = (Xstand(end/2+1:end,k)-in_param(1,3))/in_param(1,4);
   end
-  input_list{cnt} = py.numpy.array(input_net);
-  cnt = cnt + 1;
-  end
-end % imode
-
-[Xpredict] = pyrunfile("tension_advect_predict.py","output_list",input_shape=input_list,num_ves=py.int(nv));
-
-% Approximate the multiplication Z = inv(DivGT)DivPhi_k
-Z1 = zeros(N,N,nv); Z2 = Z11r;
+end
 
 
+input_conv = py.numpy.array(input_net);
+[Xpredict] = pyrunfile("tension_advect_allModes_predict2024Oct.py","output_list",input_shape=input_conv,num_ves=py.int(nv),modesInUse=py.int(modesInUse));
+
+% Approximate the multiplication M*(FFTBasis)     
+Z1 = zeros(N,N,nv); Z2 = Z1;
+
+pred = double(Xpredict); % size (nv, 2*(N-1), N)
 for ij = 1 : numel(modeList)-1
   
   imode = modeList(ij+1); % mode index # skipping the first mode
-  pred = double(Xpredict{ij}); % size(pred) = [1 2 256]
-
-
+  
   % denormalize output
-  real_mean = out_param(imode-1,1);
-  real_std = out_param(imode-1,2);
-  imag_mean = out_param(imode-1,3);
-  imag_std = out_param(imode-1,4);
+  real_mean = out_param(ij,1);
+  real_std = out_param(ij,2);
+  imag_mean = out_param(ij,3);
+  imag_std = out_param(ij,4);
   
   for k = 1 : nv
     % first channel is real
-    pred(k,1,:) = (pred(k,1,:)*real_std) + real_mean;
+    Z1(:,imode,k) = (pred(k,2*(ij-1)+1,:)*real_std) + real_mean;
     % second channel is imaginary
-    pred(k,2,:) = (pred(k,2,:)*imag_std) + imag_mean;
-
-    Z1(:,imode,k) = pred(k,1,:);
-    Z2(:,imode,k) = pred(k,2,:);
+    Z2(:,imode,k) = (pred(k,2*ij,:)*imag_std) + imag_mean;
   end
 end
 
-vBackSolve = zeros(N,nv);
+% Take fft of the velocity (should be standardized velocity)
+% only sort points and rotate to pi/2 (no translation, no scaling)
+tension = zeros(N,nv);
 for k = 1 : nv
-  % Take fft of the velocity, standardize velocity
-  vinfStand = o.standardize(vinf(:,k),[0;0],rotate(k),1,sortIdx(:,k));
+  vinfStand = o.standardize(vinf(:,k),[0;0],rotate(k),[0;0],1,sortIdx(:,k));
   z = vinfStand(1:end/2)+1i*vinfStand(end/2+1:end);
+
   zh = fft(z);
   V1 = real(zh); V2 = imag(zh);
-
-  % Compute the approximation to inv(Div*G*Ten)*Div*vExt
-  MVinfStand = (Z1(:,:,k)*V1+Z2(:,:,k)*V2);
-
-  % Destandardize the multiplication
+  % Compute the approximate value of the term M*vinf
+  MVinfStand = Z1(:,:,k)*V1 + Z2(:,:,k)*V2;
+  % Need to destandardize MVinf (take sorting and rotation back)
   MVinf = zeros(size(MVinfStand));
-  MVinf([sortIdx(:,k);sortIdx(:,k)+N]) = MVinfStand;
-  vBackSolve(:,k) = o.rotationOperator(MVinf,-rotate(:,k),[0;0]);
+  MVinf(sortIdx(:,k)) = MVinfStand;
+  tension(:,k) = MVinf;
 end
+
 end % invTenMatOnVback
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function tenPred = invTenMatOnSelfBend(o,X)
+function tension = invTenMatOnSelfBend(o,X)
 % Approximate inv(Div*G*Ten)*G*(-Ben)*x
 
-% number of vesicles
-Xstand = zeros(size(X));
-nv = numel(X(1,:));
+% Xinput is equally distributed in arc-length
+% Xold as well. So, we add up coordinates of the same points.
 N = numel(X(:,1))/2;
+nv = numel(X(1,:));
+oc = o.oc;
+
 
 scaling = zeros(nv,1); rotate = zeros(nv,1); 
 rotCent = zeros(2,nv); trans = zeros(2,nv);
 sortIdx = zeros(N,nv);
+Xin = zeros(size(X));
 
 for k = 1 : nv
-  [Xstand(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = ...
-    o.standardizationStep(X(:,k),128);
+  [Xin(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = ...
+    o.standardizationStep(X(:,k),N);
 end
 
-% Normalize input
 x_mean = o.tenSelfNetInputNorm(1);
 x_std = o.tenSelfNetInputNorm(2);
 y_mean = o.tenSelfNetInputNorm(3);
 y_std = o.tenSelfNetInputNorm(4);
 
-% Adjust the input shape for the network
-XinitShape = zeros(nv,2,128);
-for k = 1 : nv
-  XinitShape(k,1,:) = (Xstand(1:end/2,k)'-x_mean)/x_std; 
-  XinitShape(k,2,:) = (Xstand(end/2+1:end,k)'-y_mean)/y_std;
-end
-XinitConv = py.numpy.array(XinitShape);
-
-% Make prediction -- needs to be adjusted for python
-[tenPredictStand] = pyrunfile("tension_self_network.py", "predicted_shape", input_shape=XinitConv);
-
-% Denormalize output
 out_mean = o.tenSelfNetOutputNorm(1);
 out_std = o.tenSelfNetOutputNorm(2);
 
-
-tenPred = zeros(N,nv);
-tenPredictStand = double(tenPredictStand);
-
-for k = 1 : nv 
-  % also destandardize
-  tenPred(sortIdx(:,k)) = (tenPredictStand(k,1,:)*out_std + out_mean)...
-      /scaling(k)^2;
+Xin(1:end/2,:) = (Xin(1:end/2,:)-x_mean)/x_std;
+Xin(end/2+1:end,:) = (Xin(end/2+1:end,:)-y_mean)/y_std;
+XinitShape = zeros(nv,2,N);
+for k = 1 : nv
+XinitShape(k,1,:) = Xin(1:end/2,k)'; 
+XinitShape(k,2,:) = Xin(end/2+1:end,k)';
 end
+XinitConv = py.numpy.array(XinitShape);
+
+[Xpredict] = pyrunfile("self_tension_solve_2024Oct.py","predicted_shape",input_shape=XinitConv);
+
+tenStand = double(Xpredict);
+tension = zeros(N,nv);
+
+for k = 1 : nv
+  tenOut = tenStand(k,1,:)*out_std + out_mean;
+  tension(sortIdx(:,k),k) = tenOut/scaling(k)^2;
+end
+
+
 
 end % invTenMatOnSelfBend
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
