@@ -116,10 +116,12 @@ IA = zeros(nv,1);
 N = size(X,1)/2;
 modes = [(0:N/2-1)';0;(-N/2+1:-1)'];
 
+centX = o.getPhysicalCenterShan(X);
 for k = 1 : nv
-  X(:,k) = [X(1:end/2,k)-mean(X(1:end/2,k));...
-    X(end/2+1:end,k)-mean(X(end/2+1:end,k))];
+  X(:,k) = [X(1:end/2,k)-centX(1);...
+      X(end/2+1:end,k)-centX(2)];
 end
+
 
 for k = 1 : nv
     x = X(1:end/2,k); 
@@ -386,8 +388,8 @@ nv = size(X,2);
 Xnew = zeros(size(X));
 
 for k = 1 : nv
-initMean = [mean(Xorg(1:end/2,k)); mean(Xorg(end/2+1:end,k))];
-newMean = [mean(X(1:end/2,k)); mean(X(end/2+1:end,k))];
+initMean = o.getPhysicalCenterShan(Xorg); %[mean(Xorg(1:end/2,k)); mean(Xorg(end/2+1:end,k))];
+newMean = o.getPhysicalCenterShan(X); %[mean(X(1:end/2,k)); mean(X(end/2+1:end,k))];
 
 initAngle = o.getIncAngle2(Xorg(:,k));
 newAngle = o.getIncAngle2(X(:,k));
