@@ -1,6 +1,6 @@
 import torch
 from scipy.interpolate import interp1d
-from curve import Curve
+from curve_batch import Curve
 from fft1 import fft1
 
 class capsules:

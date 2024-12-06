@@ -1,20 +1,22 @@
 import numpy as np
 import torch
 torch.set_default_dtype(torch.float64)
-from curve import Curve
-from wrapper_MLARM_torch import MLARM_manyfree_py
-# from MLARM_rbfcheck import MLARM_py, MLARM_manyfree_py
+from curve_batch import Curve
+# from wrapper_MLARM import MLARM_manyfree_py
+# from wrapper_MLARM_nearSubtract import MLARM_manyfree_py
+from wrapper_MLARM_batch import MLARM_manyfree_py
 import time
 from scipy.io import loadmat
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-device = torch.device("cuda:0")
+device = torch.device("cpu")
 # Load curve_py
 oc = Curve()
 
 # File name
-fileName = './output/shear.bin'  # To save simulation data
+# fileName = './output/48inTG.bin'  # To save simulation data
+fileName = './output/linshi.bin'  # To save simulation data
 
 # def set_bg_flow(bgFlow, speed):
 #     if bgFlow == 'relax':
@@ -47,27 +49,36 @@ def set_bg_flow(bgFlow, speed):
             r = torch.sqrt(X[:N] ** 2 + X[N:] ** 2)
             theta = torch.atan2(X[N:], X[:N])
             return speed * torch.vstack((-torch.sin(theta) / r, torch.cos(theta) / r))  # Rotation
+        elif bgFlow == 'vortex':
+            chanWidth = 2.5
+            return speed * torch.cat([
+                torch.sin(X[:X.shape[0]//2] / chanWidth * torch.pi) * torch.cos(X[X.shape[0]//2:] / chanWidth * torch.pi),
+                -torch.cos(X[:X.shape[0]//2] / chanWidth * torch.pi) * torch.sin(X[X.shape[0]//2:] / chanWidth * torch.pi)], dim=0)
         else:
             return torch.zeros_like(X)
     
     return get_flow
-
-
 
 # Flow specification
 bgFlow = 'shear'
 speed = 2000
 vinf = set_bg_flow(bgFlow, speed)
 
+# bgFlow = 'vortex'
+# speed = 200
+# vinf = set_bg_flow(bgFlow, speed)
+
+
 # Time stepping
 dt = 1e-5  # Time step size
-Th = 350*dt # Time horizon
+Th = 300*dt # Time horizon
 
 # Vesicle discretization
 N = 128  # Number of points to discretize vesicle
 
 
 init_data = loadmat("../shearIC.mat") ### INIT SHAPES FROM THE DATA SET
+# init_data = loadmat("../48vesiclesInTG_N128.mat") ### INIT SHAPES FROM THE DATA SET
 Xics = init_data.get('Xic')
 X0 = torch.from_numpy(Xics).to(device)
 nv = X0.shape[1]
@@ -93,11 +104,19 @@ relax_net_output_norm = np.array([-2.884585348361668e-10, 0.00020574081281665713
 # nearNetOutputNorm = np.load("../trained/out_param_allmode.npy")
 nearNetInputNorm = np.load("../trained/in_param_disth_allmode.npy")
 nearNetOutputNorm = np.load("../trained/out_param_disth_allmode.npy")
-tenSelfNetInputNorm = np.array([2.980232033378272e-11, 0.06010082736611366, 
-                        -1.0086939616904544e-10, 0.13698545098304749])
-tenSelfNetOutputNorm = np.array([327.26141357421875, 375.0673828125 ])
-tenAdvNetInputNorm = np.load("../trained/ves_advten_models/ves_advten_in_param.npy")
-tenAdvNetOutputNorm = np.load("../trained/ves_advten_models/ves_advten_out_param.npy")
+# tenSelfNetInputNorm = np.array([2.980232033378272e-11, 0.06010082736611366, 
+#                         -1.0086939616904544e-10, 0.13698545098304749])
+# tenSelfNetOutputNorm = np.array([327.26141357421875, 375.0673828125 ])
+
+# self ten network updated by using a 156k dataset
+tenSelfNetInputNorm = np.array([0.00017108717293012887, 0.06278623640537262, 
+                        0.002038202714174986,0.13337858021259308])
+tenSelfNetOutputNorm = np.array([337.7627868652344, 466.6429138183594])
+
+# tenAdvNetInputNorm = np.load("../trained/ves_advten_models/ves_advten_in_param.npy")
+# tenAdvNetOutputNorm = np.load("../trained/ves_advten_models/ves_advten_out_param.npy")
+tenAdvNetInputNorm = np.load("../trained/2024Oct_advten_in_para_allmodes.npy")
+tenAdvNetOutputNorm = np.load("../trained/2024Oct_advten_out_para_allmodes.npy")
 
 mlarm = MLARM_manyfree_py(dt, vinf, oc, 
                 torch.from_numpy(adv_net_input_norm), torch.from_numpy(adv_net_output_norm),
@@ -128,7 +147,7 @@ for it in tqdm(range(int(Th//dt))):
     # Take a time step
     tStart = time.time()
     
-    X, Ten = mlarm.many_time_step(X, Ten)
+    X, Ten = mlarm.time_step_many(X, Ten)
     # np.save(f"shape_t{currtime}.npy", X)
     tEnd = time.time()
 
@@ -143,7 +162,7 @@ for it in tqdm(range(int(Th//dt))):
 
     # Print time step info
     print('********************************************')
-    print(f'{it}th time step, time: {currtime}')
+    print(f'{it+1}th time step, time: {currtime}')
     print(f'Solving with networks takes {tEnd - tStart} sec.')
     print(f'Error in area and length: {max(errArea, errLen)}')
     print('********************************************\n')
