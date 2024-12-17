@@ -15,8 +15,12 @@ tenSelfNetInputNorm
 tenSelfNetOutputNorm
 tenAdvNetInputNorm
 tenAdvNetOutputNorm
+torchLaplaceInNorm
+torchLaplaceOutNorm
 area0
 len0
+irepulsion
+repStrength
 end
 
 methods
@@ -24,7 +28,7 @@ methods
 function o = MLARM_ManyFree_py(dt,vinf,oc,advNetInputNorm,...
         advNetOutputNorm,relaxNetInputNorm,relaxNetOutputNorm,...
         nearNetInputNorm,nearNetOutputNorm,tenSelfNetInputNorm,...
-        tenSelfNetOutputNorm,tenAdvNetInputNorm,tenAdvNetOutputNorm)
+        tenSelfNetOutputNorm,tenAdvNetInputNorm,tenAdvNetOutputNorm,irepulsion)
 o.dt = dt; % time step size
 o.vinf = vinf; % background flow (analytic -- input as function of vesicle config)
 o.oc = oc; % curve class
@@ -48,6 +52,11 @@ o.tenSelfNetOutputNorm = tenSelfNetOutputNorm;
 % Normalization values for tension-advection networks
 o.tenAdvNetInputNorm = tenAdvNetInputNorm;
 o.tenAdvNetOutputNorm = tenAdvNetOutputNorm;
+
+% Flag for repulsion
+o.irepulsion = irepulsion;
+o.repStrength = 1E+3;
+
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [Xnew,tenNew] = time_step(o,Xold,tenOld)
@@ -61,13 +70,16 @@ vesicle = capsules_py(Xold,[],[],o.kappa,1);
 nv = vesicle.nv;
 N = vesicle.N;
 
+% Compute velocity induced by repulsion force
+repForce = zeros(2*N,nv);
+if o.irepulsion
+  repForce = vesicle.repulsionForce(Xold,o.repStrength);
+end
+
 % Compute bending forces + old tension forces
 fBend = vesicle.tracJump(Xold,zeros(N,nv));
 fTen = vesicle.tracJump(zeros(2*N,nv),tenOld);
 tracJump = fBend+fTen; % total elastic force
-
-% Filter the tractionJump
-tracJump = oc.upsThenFilterShape(tracJump,4*N,64);
 % -----------------------------------------------------------
 % 1) Explicit Tension at the Current Step
 
@@ -75,7 +87,7 @@ tracJump = oc.upsThenFilterShape(tracJump,4*N,64);
 % use neural networks to calculate near-singular integrals
 [velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, transNear, rotateNear, ...
     rotCentNear, scalingNear, sortIdxNear] = o.predictNearLayers(vesicle.X); 
-farFieldtracJump = o.computeStokesInteractions(vesicle, tracJump, ...
+farFieldtracJump = o.computeStokesInteractions(vesicle, tracJump, repForce, ...
     velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, transNear, rotateNear, ...
     rotCentNear, scalingNear, sortIdxNear);
 
@@ -94,7 +106,7 @@ tracJump = fBend + fTen;
 
 % Calculate far-field again and correct near field before advection
 % use neural networks to calculate near-singular integrals
-farFieldtracJump = o.computeStokesInteractions(vesicle, tracJump, ...
+farFieldtracJump = o.computeStokesInteractions(vesicle, tracJump, repForce,...
     velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, transNear, rotateNear, ...
     rotCentNear, scalingNear, sortIdxNear);
 % filter the far-field
@@ -177,7 +189,6 @@ for ij = 1 : N
     input_net(k,2*ij,:) = (Xstand(end/2+1:end,k)-in_param(1,3))/in_param(1,4);
   end
 end
-
 
 
 % How many modes to be used
@@ -285,7 +296,7 @@ end
 
 end % buildVelocityInNear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function farField = computeStokesInteractions(o,vesicle, tracJump, ...
+function farField = computeStokesInteractions(o,vesicle, repForce, tracJump, ...
         velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, trans,...
         rotate,rotCent, scaling, sortIdx)
 
@@ -293,6 +304,9 @@ N = vesicle.N;
 nv = vesicle.nv;
 
 xvesicle = vesicle.X(1:end/2,:); yvesicle = vesicle.X(end/2+1:end,:);
+
+% Total force density on vesicles
+totalForce = tracJump + repForce;
 
 % Compute near/far hydro interactions
 % with upsampling by 2
@@ -304,13 +318,21 @@ zone = NearV2V.zone;
 farField = zeros(2*N,nv);
 for k = 1 : nv
   K = [(1:k-1) (k+1:nv)];
-  farField(:,k) = o.exactStokesSL(vesicle, tracJump, vesicle.X(:,k), K);
+  farField(:,k) = o.exactStokesSL(vesicle, totalForce, vesicle.X(:,k), K);
 end
 
 % Predict velocity on layers
 % Get velocity on layers once predicted
-[velx, vely] = o.buildVelocityInNear(tracJump, velx_real, vely_real, ...
+[velx, vely] = o.buildVelocityInNear(totalForce, velx_real, vely_real, ...
     velx_imag, vely_imag, trans, rotate, rotCent, scaling, sortIdx);
+
+% Get velocity due to repulsion on vesicles themselves (G*repForce)
+selfRepVel = zeros(2*N,nv);
+if o.irepulsion
+  [selfRepVelx, selfRepVely] = o.buildVelocityInNear(repForce, velx_real, vely_real, ...
+      velx_imag, vely_imag, trans, rotate, rotCent, scaling, sortIdx);
+  selfRepVel = [selfRepVelx(:,:,1); selfRepVely(:,:,1)]; % velocity on the first layer
+end
 
 opX = []; opY = [];
 for k = 1 : nv
@@ -333,7 +355,7 @@ for k1 = 1 : nv
     if numel(J) ~= 0
       % need tp subtract off contribution due to vesicle k1 since its layer
       % potential will be evaulated through interpolation
-      potTar = o.exactStokesSL(vesicle, tracJump, [xvesicle(J,k2);yvesicle(J,k2)],k1);
+      potTar = o.exactStokesSL(vesicle, totalForce, [xvesicle(J,k2);yvesicle(J,k2)],k1);
       nearField(J,k2) = nearField(J,k2) - potTar(1:numel(J));
       nearField(J+N,k2) = nearField(J+N,k2) - potTar(numel(J)+1:end);
          
@@ -354,8 +376,7 @@ end % for k1
 
 
 % finally add the corrected nearfield to the farfield
-farField = farField + nearField;
-
+farField = farField + nearField + selfRepVel;
 
 end % computeStokesInteractions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -679,6 +700,144 @@ end
 
 
 end % invTenMatOnSelfBend
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function icollisionVes = collisionDetection(o, X)
+N = numel(X(:,1))/2;
+nv = numel(X(1,:));
+
+oc = o.oc;
+in_param = o.torchLaplaceInNorm;
+out_param = o.torchLaplaceOutNorm;
+
+nlayers = 5; % 4 of them are predicted -- 
+% Laplace integral on the layer aligning with vesicle is known and zero
+dlayer = [-1; -1/2; 0; 1; 2] * 1/N;
+% can cheat here because we know that the double-layer
+% potential applied to our function f will always be 0
+% This won't work if we are considering density functions
+% that are not one everywhere
+
+% Density function is constant.  Pad second half of it with zero
+f = [ones(N,nv);zeros(N,nv)];
+% standardize input
+Xstand = zeros(size(X));
+nv = numel(X(1,:));
+scaling = zeros(nv,1);
+rotate = zeros(nv,1);
+rotCent = zeros(2,nv);
+trans = zeros(2,nv);
+sortIdx = zeros(Nnet,nv);
+
+tracersX = zeros(2*N,5,nv);
+
+for k = 1 : nv
+  [Xstand(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = o.standardizationStep(X(:,k),N);
+  [~,tang] = oc.diffProp(Xstand(:,k));
+  nx = tang(N+1:2*N);
+  ny = -tang(1:N);
+
+  for il = 1 : nlayers 
+    tracersX(:,il,k) = [Xstand(1:end/2,k)+nx*dlayer(il); Xstand(end/2+1:end,k)+ny*dlayer(il)];
+  end
+end
+
+% Normalize input
+input_net = zeros(nv,2*N);
+
+for k = 1 : nv
+  input_net(k,1,:) = (Xstand(1:end/2,k)-in_param(1,1))/in_param(1,2);
+  input_net(k,2,:) = (Xstand(end/2+1:end,k)-in_param(1,3))/in_param(1,4);
+end
+
+
+input_conv = py.numpy.array(input_net);
+[Xpredict] = pyrunfile("laplaceIntegral_predict.py","output_list",input_shape=input_conv);
+
+Xpredict = double(Xpredict); % let's say the output is (nv x 4 x N)
+laplaceDL = zeros(N,nv,5);
+% denormalize output
+for k = 1 : nv
+  laplaceDL(:,k,1) = Xpredict(k,1,:)*out_param(2,1) + out_param(1,1);
+  laplaceDL(:,k,2) = Xpredict(k,2,:)*out_param(2,2) + out_param(1,2);
+  laplaceDL(:,k,4) = Xpredict(k,3,:)*out_param(2,3) + out_param(1,3);
+  laplaceDL(:,k,5) = Xpredict(k,4,:)*out_param(2,4) + out_param(1,4);
+end 
+% outputs
+% velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, trans, rotate, rotCent, scaling, sortIdx
+
+xlayers = zeros(N,5,nv);
+ylayers = zeros(N,5,nv);
+for k = 1 : nv
+  for il = 1 : 5
+     Xl = o.destandardize(tracersX(:,il,k),trans(:,k),rotate(k),rotCent(:,k),scaling(k),sortIdx(:,k));
+     xlayers(:,il,k) = Xl(1:end/2);
+     ylayers(:,il,k) = Xl(end/2+1:end);
+  end
+end
+
+
+% Do the far-field and correct near-field
+NearV2V = vesicle.getZone([],1);    
+% can be done only once as computeStokesInteractions also need that
+zone = NearV2V.zone;
+
+% First calculate the far-field
+farField = zeros(2*N,nv);
+for k = 1 : nv
+  K = [(1:k-1) (k+1:nv)];
+  farField(:,k) = o.exactLaplaceDL(vesicle, f, vesicle.X(:,k), K);
+end
+farField = farField(1:end/2,:); % scalar value
+
+interpOp = []; 
+for k = 1 : nv
+ % layers around the vesicle j 
+ Xin = [reshape(xlayers(:,:,k),1,5*N); reshape(ylayers(:,:,k),1,5*N)];
+ velInput = reshape(laplaceDL(:,:,k), 1, 5*N); 
+  
+ interpOp{k} = rbfcreate(Xin,velInput,'RBFFunction','linear');
+end
+
+nearField = zeros(size(farField));
+
+for k1 = 1 : nv
+  K = [(1:k1-1) (k1+1:nv)];
+  for k2 = K
+    % points on vesicle k2 close to k1  
+    J = find(zone{k1}(:,k2) == 1);  
+    if numel(J) ~= 0
+      % need tp subtract off contribution due to vesicle k1 since its layer
+      % potential will be evaulated through interpolation
+      potTar = o.exactLaplaceDL(vesicle, f, [xvesicle(J,k2);yvesicle(J,k2)],k1);
+      nearField(J,k2) = nearField(J,k2) - potTar(1:numel(J)); % scalar value
+         
+      % now interpolate
+      for i = 1 : numel(J)
+        pointsIn = [xvesicle(J(i),k2);yvesicle(J(i),k2)];
+        % interpolate for the k2th vesicle's points near to the k1th vesicle
+        rbfVel = rbfinterp(pointsIn, interpOp{k1});
+        nearField(J(i),k2) = nearField(J(i),k2) + rbfVel;
+      end
+    end % if numel(J)
+
+  end % for k2
+end % for k1
+
+% finally add the corrected nearfield to the farfield
+Fdlp = farField + nearField;
+
+
+bufferVes = 2e-3;
+% can't set buffer too big because near singular integration does not
+% assign a value of 1 when near points cross.  This is because I did not
+% swtich the direction of the normal for this case.  So, the lagrange
+% interpolation points may look something like [0 1 1 1 1 ...] instead
+% of [1 1 1 1 1 ...].  The local interpolant is affected by this and
+% a value somewhere between 0 and 1 will be returned
+icollisionVes = any(abs(Fdlp(:)) > bufferVes);
+
+
+end % collisionDetection
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function stokesSLPtar = exactStokesSL(o,vesicle,f,Xtar,K1)
 % [stokesSLP,stokesSLPtar] = exactStokesSL(vesicle,f,Xtar,K1) computes
@@ -746,6 +905,63 @@ stokesSLPtar = 1/(4*pi)*stokesSLPtar;
 % 1/4/pi is the coefficient in front of the single-layer potential
 
 end % exactStokesSL
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [laplaceDLPtar] = exactLaplaceDL(o,vesicle,f,Xtar,K1)
+% pot = exactLaplaceDL(vesicle,f,Xtar,K1) computes the double-layer
+% laplace potential due to f around all vesicles except itself.  Also
+% can pass a set of target points Xtar and a collection of vesicles K1
+% and the double-layer potential due to vesicles in K1 will be
+% evaluated at Xtar.  Everything but Xtar is in the 2*N x nv format
+% Xtar is in the 2*Ntar x ncol format
+
+oc = o.oc;
+
+nx = vesicle.xt(vesicle.N+1:2*vesicle.N,:);
+ny = -vesicle.xt(1:vesicle.N,:);
+
+Ntar = size(Xtar,1)/2;
+ncol = size(Xtar,2);
+laplaceDLPtar = zeros(2*Ntar,ncol);
+
+den = f.*[vesicle.sa;vesicle.sa]*2*pi/vesicle.N;
+% multiply by arclength term
+
+[xsou,ysou] = oc.getXY(vesicle.X(:,K1));
+xsou = xsou(:); ysou = ysou(:);
+xsou = xsou(:,ones(Ntar,1))';
+ysou = ysou(:,ones(Ntar,1))';
+
+[denx,deny] = oc.getXY(den(:,K1));
+denx = denx(:); deny = deny(:);
+denx = denx(:,ones(Ntar,1))';
+deny = deny(:,ones(Ntar,1))';
+
+nxK1 = nx(:,K1); nyK1 = ny(:,K1);
+nxK1 = nxK1(:); nyK1 = nyK1(:);
+nxK1 = nxK1(:,ones(Ntar,1))';
+nyK1 = nyK1(:,ones(Ntar,1))';
+
+for k2 = 1:ncol % loop over columns of target points
+  [xtar,ytar] = oc.getXY(Xtar(:,k2));
+  xtar = xtar(:,ones(vesicle.N*numel(K1),1));
+  ytar = ytar(:,ones(vesicle.N*numel(K1),1));
+  
+  diffx = xsou-xtar; diffy = ysou-ytar;
+  dis2 = diffx.^2 + diffy.^2;
+  
+  coeff = (diffx.*nxK1 + diffy.*nyK1)./dis2;
+  
+  val = coeff.*denx;
+  laplaceDLPtar(1:Ntar,k2) = sum(val,2);
+  
+  val = coeff.*deny;
+  laplaceDLPtar(Ntar+1:2*Ntar,k2) = sum(val,2);
+end % end k2
+% Evaluate double-layer potential at arbitrary target points
+laplaceDLPtar = 1/(2*pi)*laplaceDLPtar;
+% 1/2/pi is the coefficient in front of the double-layer potential
+
+end % exactLaplaceDL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [X,scaling,rotate,rotCent,trans,sortIdx] = standardizationStep(o,Xin,Nnet)
 oc = o.oc;

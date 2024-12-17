@@ -127,13 +127,13 @@ end % methods
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 methods (Static)
 
-% function Deriv = D1(N)
-% % Deriv = D1(N) constructs a N by N fourier differentiation matrix
-% [FF,FFI] = fft1.fourierInt(N);
-% Deriv = FFI * diag(1i*([0 -N/2+1:N/2-1])) * FF;
-% Deriv = real(Deriv);
+function Deriv = D1(N)
+% Deriv = D1(N) constructs a N by N fourier differentiation matrix
+[FF,FFI] = fft1_py.fourierInt(N);
+Deriv = FFI * diag(1i*([0 -N/2+1:N/2-1])) * FF;
+Deriv = real(Deriv);
 
-% end % D1
+end % D1
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function df = diffFT(f,IK)
@@ -183,7 +183,7 @@ end % modes
 function D1 = fourierDiff(N)
 % D1 = fourierDiff(N) creates the fourier differentiation matrix
 
-D1 = fft1.fourierInt(N);
+D1 = fft1_py.fourierInt(N);
 D1 = D1'*diag(1i*N*(-N/2:N/2-1))*D1;
 
 
@@ -200,7 +200,7 @@ function [R,P] = fourierRandP(N,Nup)
 R = zeros(N,Nup);
 P = zeros(Nup,N);
 
-[FF1,FFI1] = fft1.fourierInt(N);
+[FF1,FFI1] = fft1_py.fourierInt(N);
 [FF2,FFI2] = fft1.fourierInt(Nup);
 
 R = FFI1 * [zeros(N,(Nup-N)/2) eye(N,N) zeros(N,(Nup-N)/2)] * FF2;

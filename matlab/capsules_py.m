@@ -82,7 +82,53 @@ ben = [-o.kappa*curve_py.arcDeriv(f(1:o.N,:),4,o.isa,o.IK);...
   -o.kappa*curve_py.arcDeriv(f(o.N+1:2*o.N,:),4,o.isa,o.IK)];
 
 end % bendingTerm
- 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function repForce = repulsionForce(o,X,W)
+% rep = repulsionForce(o,X,W) computes the artificial repulsion between vesicles. 
+% W is the repulsion strength -- depends on the length and velocity scale
+% of the flow.
+% 
+% Repulsion is computed using the discrete penalty layers given in Grinspun
+% et al. (2009), Asynchronuous Contact Mechanics.
+
+oc = curve;
+nv = numel(X(1,:));
+N = numel(X(:,1))/2;
+
+% Compute x,y coordinates of net repulsive force on each point of each
+% vesicle due to all other vesicles and walls
+repForce = zeros(2*N,nv);
+
+ox = X(1:end/2,:);
+oy = X(end/2+1:end,:);
+
+for k = 1:nv
+  repx = zeros(N,1); repy = zeros(N,1);  
+  
+  notk = [(1:k-1) (k+1:nv)];
+  notk_ox = ox(:,notk);
+  notk_oy = oy(:,notk);
+  
+  for j = 1 : N
+    if nv > 1  
+      % Find the distances to each point on a vesicle  
+      dist = ((ox(j,k) - notk_ox).^2 + ...
+          (oy(j,k) - notk_oy).^2).^0.5;
+
+      % Find out the maximum amount of layers necessary for each distance
+      L = floor(eta./dist);
+
+      % Stiffness l^2
+      dF = -L.*(2*L+1).*(L+1)/3 + L.*(L+1).*eta./dist;
+      
+      repx(j) = sum(sum(dF .* (ox(j,k) - notk_ox)));
+      repy(j) = sum(sum(dF .* (oy(j,k) - notk_oy)));
+    end
+  end % o.N
+  % repulsion on the kth vesicle multiplied with strength W
+  repForce(:,k) = W*[repx;repy];
+end % nv
+end % repulsionForce
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function ten = tensionTerm(o,sig)
 % ten = tensionTerm(o,sig) computes the term due to tension (\sigma *

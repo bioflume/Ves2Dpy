@@ -347,7 +347,7 @@ Xnew = zeros(size(X));
 for k = 1:size(Xnew,2)
     
   minFun = @(z) 1/N*min(sum((z - X(:,k)).^2));
-  [Xnew(:,k),~,iflag] = fmincon(minFun,X(:,k),[],[],[],[],[],[],...
+  [Xnew(:,k),~,iflag,output] = fmincon(minFun,X(:,k),[],[],[],[],[],[],...
       @(z) o.nonlcon(z,area0(k),length0(k)),options);
   if iflag~=1 && iflag~=2
     message = ['Correction scheme failed, do not correct at this step'];
@@ -358,7 +358,7 @@ for k = 1:size(Xnew,2)
   % Hopefully it'll be corrected at a later step.
   
 end
-
+disp(['Correction took ' num2str(output.iterations) ' iterations.'])
 % Looping over vesicles, correct the area and length of each vesicle
 
 end % correctAreaAndLength
