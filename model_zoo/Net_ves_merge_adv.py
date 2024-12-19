@@ -56,8 +56,10 @@ class Starter_Block(nn.Module):
         out = self.mix(out)
         # members = [torch.cat((out[:, self.ch*i:self.ch*(i+1)], input[:,[2*i+1]]),dim=1) for i in range(self.rep)]
         # out = torch.cat(tuple(members), dim=1)
+        # out = torch.cat((out.reshape(bs, self.rep, self.ch, -1), 
+        #                  input[:, [2*i+1 for i in range(self.rep)]].reshape(bs, self.rep, 1, -1)), dim=2)
         out = torch.cat((out.reshape(bs, self.rep, self.ch, -1), 
-                         input[:, [2*i+1 for i in range(self.rep)]].reshape(bs, self.rep, 1, -1)), dim=2)
+                         input[:, 1::2].reshape(bs, self.rep, 1, -1)), dim=2)
         out = out.reshape(bs, (self.ch+1)*self.rep, -1)
         
         return out
@@ -90,8 +92,10 @@ class Evo_Block(nn.Module):
         
         # features = [input[:, (self.ch+1)*i:(self.ch+1)*(i+1)-1] for i in range(self.rep)]
         # residual = torch.cat(tuple(features), dim=1)
-        ids = torch.concat([torch.arange((self.ch+1)*i, (self.ch+1)*(i+1)-1) for i in range(self.rep)])
-        residual = input[:,ids]
+        # ids = torch.concat([torch.arange((self.ch+1)*i, (self.ch+1)*(i+1)-1) for i in range(self.rep)])
+        mask = torch.ones(input.shape[1]).bool()
+        mask[self.ch::(self.ch+1)] = False
+        residual = input[:,mask]
 
         out_1_1 = self.relu(self.conv1_1(input))
         out_1_2 = self.relu(self.conv1_2(input))
@@ -125,7 +129,7 @@ class Evo_Block(nn.Module):
         # members = [torch.cat((out[:, self.ch*i:self.ch*(i+1)], input[:,[(self.ch+1)*(i+1)-1]]),dim=1) for i in range(self.rep)]
         # out_u = torch.cat(tuple(members), dim=1)
         out = torch.cat((out.reshape(bs, self.rep, self.ch, -1), 
-                         input[:, [(self.ch+1)*(i+1)-1 for i in range(self.rep)]].reshape(bs, self.rep, 1, -1)), dim=2)
+                         input[:,  self.ch::(self.ch+1)].reshape(bs, self.rep, 1, -1)), dim=2)
         out_u = out.reshape(bs, (self.ch+1)*self.rep, -1)
        
         return out_u

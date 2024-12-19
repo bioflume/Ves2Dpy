@@ -5,6 +5,8 @@ from scipy.interpolate import CubicSpline
 from scipy.optimize import minimize
 from fft1 import fft1
 from scipy.interpolate import interp1d
+import torch.nn as nn
+import time
 # import matlab.engine
 # eng = matlab.engine.start_matlab()
 
@@ -24,9 +26,7 @@ class Curve:
     def getXY(self, X):
         """Get the [x,y] component of curves X."""
         N = X.shape[0] // 2
-        x = X[:N, :]
-        y = X[N:, :]
-        return x, y
+        return X[:N, :], X[N:, :]
 
     def setXY(self, x, y):
         """Set the [x,y] component of vector V on the curve."""
@@ -74,17 +74,17 @@ class Curve:
         % principal dim corresponding to the smallest principal moment of inertia
         """
         nv = X.shape[1]
-        IA = torch.zeros(nv, dtype=torch.float64)
+        # IA = torch.zeros(nv, dtype=torch.float64)
         # % compute inclination angle on an upsampled grid
         N = X.shape[0] // 2
-        modes = torch.concatenate((torch.arange(0, N // 2), torch.tensor([0]), torch.arange(-N // 2 + 1, 0))).double()
+        # modes = torch.concatenate((torch.arange(0, N // 2), torch.tensor([0]), torch.arange(-N // 2 + 1, 0))).double()
         center = self.getPhysicalCenter(X)
         
-        tempX = torch.zeros_like(X)
-        # tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - torch.mean(X[:X.shape[0] // 2], dim=0)
-        # tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - torch.mean(X[X.shape[0] // 2:], dim=0)
-        tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - center[0]
-        tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - center[1]
+        # tempX = torch.zeros_like(X)
+        # # tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - torch.mean(X[:X.shape[0] // 2], dim=0)
+        # # tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - torch.mean(X[X.shape[0] // 2:], dim=0)
+        # tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - center[0]
+        # tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - center[1]
         
         # for k in range(nv):
         #     x = tempX[:N, k]
@@ -171,7 +171,7 @@ class Curve:
         """
         N = X.shape[0] // 2  # Number of points
         nv = X.shape[1]  # Number of variables
-        multiple_V = torch.zeros((2,nv), dtype=torch.float64)
+        # multiple_V = torch.zeros((2,nv), dtype=torch.float64)
         
         # for k in range(nv):
         #     # Compute the centered coordinates
@@ -346,28 +346,37 @@ class Curve:
 
         # % tolConstraint (which controls area and length) comes from the area-length
         # % tolerance for time adaptivity.
-        
+        tolConstraint = 1e-3
+        tolFunctional = 1e-3
+
         # % Find the current area and length
-        # _, a, l = self.geomProp(X)
-        # eAt = torch.abs((a - area0) / area0)
-        # eLt = torch.abs((l - length0) / length0)
+        _, a, l = self.geomProp(X)
+        eAt = torch.abs((a - area0) / area0)
+        eLt = torch.abs((l - length0) / length0)
+        if torch.max(eAt) < tolConstraint and torch.max(eLt) < tolConstraint:
+            return X
 
-        N = X.shape[0] // 2
-        # tolConstraint = 1e-2
-        # tolFunctional = 1e-2
-
-        options = {'maxiter': 3000, 'disp': False}
+        # N = X.shape[0] // 2
+        
+        print("entering a & l correction")
+        options = {'maxiter': 300, 'disp': True}
 
         X = X.cpu().numpy()
         area0 = area0.cpu().numpy()
         length0 = length0.cpu().numpy()
         Xnew = np.zeros_like(X)
+
+        # def mycallback(Xi):
+        #     global num_iter
+        #     print(f"scipy minimize iter {num_iter}")
+        #     num_iter += 1
+
         for k in range(X.shape[1]):
             def minFun(z):
                 return np.mean((z - X[:, k]) ** 2)
 
             cons = ({'type': 'eq', 'fun': lambda z: self.nonlcon(z, area0[k], length0[k])})
-            res = minimize(minFun, X[:, k], constraints=cons, options=options)
+            res = minimize(minFun, X[:, k], constraints=cons, options=options) #, tol=1e-2 , callback=mycallback
             Xnew[:, k] = res.x
             # print(res.message)
             # print(f"function value{res.fun}") # , cons violation {res.maxcv}
@@ -383,6 +392,104 @@ class Curve:
         cEx = torch.hstack(((a - a0) / a0, (l - l0) / l0))
         return cEx
 
+    def correctAreaAndLengthAugLag(self, X, area0, length0):
+        """Change the shape of the vesicle by correcting the area and length."""
+        
+        # % Xnew = correctAreaAndLength(X,a0,l0) changes the shape of the vesicle
+        # % by finding the shape Xnew that is closest to X in the L2 sense and
+        # % has the same area and length as the original shape
+
+        # % tolConstraint (which controls area and length) comes from the area-length
+        # % tolerance for time adaptivity.
+        
+        # % Find the current area and length
+        # _, a, l = self.geomProp(X)
+        # eAt = torch.abs((a - area0) / area0)
+        # eLt = torch.abs((l - length0) / length0)
+
+        # N = X.shape[0] // 2
+        tolConstraint = 1e-2
+        tolFunctional = 1e-2
+
+        # % Find the current area and length
+        _, a, l = self.geomProp(X)
+        area0 = area0.float()
+        length0 = length0.float()
+        eAt = torch.abs((a - area0) / area0)
+        eLt = torch.abs((l - length0) / length0)
+        if torch.max(eAt) < tolConstraint and torch.max(eLt) < tolConstraint:
+            return X
+        # print(f"initial rel err of a {torch.max(eAt)} and l {torch.max(eLt)}")
+
+        maxiter = 100
+        
+        # # Xnew = torch.zeros_like(X)
+        # def minFun(z, lamb, mu):
+        #     _, a, l = self.geomProp(z)
+        #     nv = z.shape[1]
+        #     return torch.mean((z - X) ** 2) - lamb[:nv] * (a - area0) - lamb[nv:] * (l - length0) + 1/(2*mu) * ((a-area0)**2 + (l-length0)**2)
+        
+        def max_rel_err(z, x):
+            return torch.max(torch.abs(z - x)/x)   
+        def mean_rel_err(z, x): 
+            return torch.mean(torch.norm(z - x, dim=0)/torch.norm(x, dim=0))
+        class AugLag(nn.Module):
+            def __init__(self, X):
+                super().__init__()
+                self.z = nn.Parameter(X)
+                self.X = X.clone()
+                self.c = Curve()
+
+            def forward(self, lamb, mu):
+                _, a, l = self.c.geomProp(self.z)
+                nv = self.X.shape[1]
+                a = a.float()
+                l = l.float()
+                return a, l, mean_rel_err(self.z, self.X), \
+                      - 1.0/nv * torch.inner(lamb[:nv], (a - area0)) - 1.0/nv * torch.inner(lamb[nv:], (l - length0)) + 1/(2*mu) * torch.mean((a-area0)**2 + (l-length0)**2)
+        
+        def train_model(model, lamb, mu, n_iterations=20, lr=2e-5):
+            # We initialize an optimizer
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+            # optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+
+            # We take n_iterations steps of gradient descent
+            model.train()
+            for iter in range(n_iterations):
+                optimizer.zero_grad()
+                a, l, loss_fun, loss_cons = model(lamb, mu)
+                if iter % 5 == 0:
+                    print(f"{iter} in ADAM, loss_fun is {loss_fun:.5e}, loss_cons is {loss_cons:.5e}, rel err of a {max_rel_err(a, area0):.5e}, of l {max_rel_err(l, length0):.5e}")
+                if loss_fun < tolFunctional and \
+                        max_rel_err(a, area0) < tolConstraint and \
+                        max_rel_err(l, length0) < tolConstraint:
+                    return a, l, True
+                (loss_fun + loss_cons).backward()
+                optimizer.step()
+
+            return a.detach(), l.detach(), False
+        
+        it = 0
+        lamb = torch.zeros(X.shape[1]*2, device=X.device, dtype=torch.float32)
+        mu = 0.1
+        aug_lag_model = AugLag(X.float()).to(X.device)
+        
+        while it < maxiter:
+            if it % 5==0 :
+                print(f"outside iter {it}")
+            a, l, flag = train_model(aug_lag_model, lamb, mu)
+            if flag:
+                break
+            
+            lamb -= 1/mu * torch.concat((a-area0, l-length0))
+            mu *= 0.8
+            it += 1
+
+        Xnew = aug_lag_model.z.detach().double()
+            
+        return Xnew
+
+    
     def alignCenterAngle(self, Xorg, X):
         """Use translation and rotation to match X with Xorg."""
         # % Xnew = alignCenterAngle(o,Xorg,X) uses
@@ -483,7 +590,10 @@ class Curve:
         if torch.any(to_redistribute):
             allGood = False
             ids = torch.arange(nv, device=X.device)[to_redistribute]
+            tStart = time.time()
             theta, _ = self.arcLengthParameter(X[:N, ids], X[N:, ids])
+            tEnd = time.time()
+            print(f'arcLengthParameter {tEnd - tStart} sec.')
             theta = torch.from_numpy(theta).to(X.device)
             
             zX = X[:N, ids] + 1j * X[N:, ids]

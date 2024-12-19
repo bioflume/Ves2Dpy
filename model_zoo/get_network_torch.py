@@ -25,7 +25,7 @@ class RelaxNetwork:
     
     def loadModel(self, model_path):
         model = pdeNet_Ves_factor_periodic(14, 2.9)
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
         model.to(self.device)
         model.eval()
         return model
@@ -119,7 +119,7 @@ class MergedAdvNetwork:
         # torch.save(model.state_dict(), "../trained/2024Oct_ves_merged_adv.pth")
 
         model = Net_merge_advection(12, 1.7, 20, rep=127)
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
         # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/2024Oct_ves_merged_adv.pth"))
         model.eval()
         model.to(self.device)
@@ -133,19 +133,21 @@ class MergedAdvNetwork:
         t = 128
         rep = t - s + 1 # number of repetitions
 
-        X = X.reshape(2*N, nv, 1)
-        multiX = X.repeat_interleave(rep, dim=-1)
+        multiX = X.unsqueeze(-1).repeat_interleave(rep, dim=-1)
 
         x_mean = self.input_param[s-2:t-1][:, 0]
         x_std = self.input_param[s-2:t-1][:, 1]
+        x_std[63] = 1
         y_mean = self.input_param[s-2:t-1][:, 2]
         y_std = self.input_param[s-2:t-1][:, 3]
+        y_std[63] = 1
+
 
         coords = torch.zeros((nv, 2*rep, 128), dtype=torch.float64).to(device)
         coords[:, :rep, :] = ((multiX[:N] - x_mean) / x_std).permute(1,2,0)
         coords[:, rep:, :] = ((multiX[N:] - y_mean) / y_std).permute(1,2,0)
 
-        # coords (N,2*rep,128) -> (N,rep,256)
+        # coords (N,2*rep,128) -> input_coords (nv,rep,256)
         input_coords = torch.concat((coords[:,:rep], coords[:,rep:]), dim=-1)
         # prepare fourier basis
         theta = np.arange(N)/N*2*np.pi
@@ -155,28 +157,43 @@ class MergedAdvNetwork:
         rr, ii = np.real(bases[:,s-1:t]), np.imag(bases[:,s-1:t])
         basis = torch.from_numpy(np.concatenate((rr,ii),axis=0)).T.reshape(1,rep,256).to(device)
         # add the channel of fourier basis
-        one_mode_inputs = [torch.concat((input_coords[:, [k]], basis.repeat(nv,1,1)[:,[k]]), dim=1) for k in range(rep)]
-        input_net = torch.concat(tuple(one_mode_inputs), dim=1).to(device) # input_net (nv, 254, 256)
-            
+        # one_mode_inputs = [torch.concat((input_coords[:, [k]], basis.repeat(nv,1,1)[:,[k]]), dim=1) for k in range(rep)]
+        # input_net = torch.concat(tuple(one_mode_inputs), dim=1).to(device) # input_net (nv, 254, 256)
+        
+        stacked = torch.stack((input_coords, basis.repeat(nv,1,1)), dim=2) # (nv, rep, 2, 2*N)
+        interleaved = stacked.reshape(nv, 2*rep, 2*N).to(device)
+        
+        # if not torch.allclose(input_net, interleaved):
+        #     raise "batch err"
+
         # Predict using neural networks
         self.model.eval()
         with torch.no_grad():
             # Xpredict of size (127, nv, 2, 256)
-            Xpredict = self.model(input_net.float()).reshape(-1,rep,2,256).transpose(0,1)
-            
-        for imode in range(s, t+1): 
-            real_mean = self.out_param[imode - 2][0]
-            real_std = self.out_param[imode - 2][1]
-            imag_mean = self.out_param[imode - 2][2]
-            imag_std = self.out_param[imode - 2][3]
-
-            # % first channel is real
-            Xpredict[imode - 2][:, 0, :] = (Xpredict[imode - 2][:, 0, :] * real_std) + real_mean
-            # % second channel is imaginary
-            Xpredict[imode - 2][:, 1, :] = (Xpredict[imode - 2][:, 1, :] * imag_std) + imag_mean
+            Xpredict = self.model(interleaved.float()).reshape(-1,rep,2,256).transpose(0,1)
         
-        Xpredict[63] = torch.zeros(nv, 2, 256)
-        return Xpredict.double()
+        xpred_ = torch.zeros_like(Xpredict)
+        xpred_[:,:,0] = Xpredict[:,:,0] * self.out_param[:,1,None,None] + self.out_param[:,0,None,None]
+        xpred_[:,:,1] = Xpredict[:,:,1] * self.out_param[:,3,None,None] + self.out_param[:,2,None,None]
+        xpred_[63] = torch.zeros(nv,2,256)
+
+        # for imode in range(s, t+1): 
+        #     real_mean = self.out_param[imode - 2][0]
+        #     real_std = self.out_param[imode - 2][1]
+        #     imag_mean = self.out_param[imode - 2][2]
+        #     imag_std = self.out_param[imode - 2][3]
+
+        #     # % first channel is real
+        #     Xpredict[imode - 2][:, 0, :] = (Xpredict[imode - 2][:, 0, :] * real_std) + real_mean
+        #     # % second channel is imaginary
+        #     Xpredict[imode - 2][:, 1, :] = (Xpredict[imode - 2][:, 1, :] * imag_std) + imag_mean
+        
+        # Xpredict[63] = torch.zeros(nv, 2, 256)
+
+        # if not torch.allclose(xpred_, Xpredict):
+        #     raise "batch err"
+
+        return xpred_.double()
 
     # def TODOloadModel_grouped(self): # TO DO 
         
@@ -259,8 +276,8 @@ class TenSelfNetwork:
         self.model = self.loadModel(model_path)
     
     def loadModel(self, model_path):
-        model = Net_ves_selften(12, 2.4, 24)
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model = Net_ves_selften(12, 2.4, 26)
+        model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
         model.to(self.device)
         model.eval()
         return model
@@ -277,27 +294,40 @@ class TenSelfNetwork:
         y_std = self.input_param[3]
         
         # Adjust the input shape for the network
-        XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float64).to(self.device)
-        for k in range(nv):
-            XinitShape[k, 0, :] = (Xin[:N, k] - x_mean) / x_std
-            XinitShape[k, 1, :] = (Xin[N:, k] - y_mean) / y_std
-        # XinitConv = torch.from_numpy(XinitShape).float()
-        return XinitShape.float()
+        # XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float64).to(self.device)
+        # for k in range(nv):
+        #     XinitShape[k, 0, :] = (Xin[:N, k] - x_mean) / x_std
+        #     XinitShape[k, 1, :] = (Xin[N:, k] - y_mean) / y_std
+        
+        XinitShape_ = torch.zeros((nv, 2, 128), dtype=torch.float64).to(self.device)
+        XinitShape_[:, 0, :] = (Xin[:N].T - x_mean) / x_std
+        XinitShape_[:, 1, :] = (Xin[N:].T - y_mean) / y_std
+        
+        # if not torch.allclose(XinitShape, XinitShape_):
+        #     raise "batch err"
+        return XinitShape_.float()
     
     def postProcess(self, pred):
-        # Xout has shape (nv, 2, N)
-        N = pred.shape[2]
-        nv = pred.shape[0]
+        # pred has shape (nv, 1, N)
+        # N = pred.shape[2]
+        # nv = pred.shape[0]
         out_mean = self.out_param[0]
         out_std = self.out_param[1]
+        pred = pred.squeeze() # (nv, N)
 
-        tenPred = torch.zeros((N, nv)).to(self.device)
-        for k in range(nv):
-            tenPred[:,k] = (pred[k] * out_std + out_mean)
+        # tenPred = torch.zeros((N, nv)).to(self.device)
+        # for k in range(nv):
+        #     tenPred[:,k] = (pred[k] * out_std + out_mean)
+
+        tenPred = (pred.T * out_std + out_mean)
+
+        # if not torch.allclose(tenPred, tenPred_):
+        #     raise "batch err"
         return tenPred
     
     def forward(self, Xin):
         input = self.preProcess(Xin.to(self.device))
+        self.model.eval()
         with torch.no_grad():
             pred = self.model(input)
         tenPredstand = self.postProcess(pred)
@@ -325,7 +355,7 @@ class MergedTenAdvNetwork:
         # dicts = []
         # # models = []
         # for l in range(s, t+1):
-        #     model_path = path + "/ves_advten_mode"+str(l)+".pth"
+        #     model_path = f"/work/09452/alberto47/ls6/vesicle_advten/2024Oct_save_models/2024Oct_ves_advten_mode{l}.pth"
         #     dicts.append(torch.load(model_path, map_location = self.device))
 
         # # organize and match trained weights
@@ -340,9 +370,11 @@ class MergedTenAdvNetwork:
         #         params.append(dict[key])
         #     new_weights[key] = torch.concat(tuple(params),dim=0)
         # model.load_state_dict(new_weights, strict=True)
+        # torch.save(model.state_dict(),"2024Oct_merged_advten.pth")
+
         model = Net_ves_merge_advten(12, 2.5, 24, rep=127)
         # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_advten.pth"))
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
         model.eval()
         model.to(self.device)
         return model
@@ -425,7 +457,7 @@ class MergedNearFourierNetwork:
             model = Net_ves_merge_nocoords_nearFourier(14, 3.2, 28, rep=128)
         # model = Net_ves_merge_nocoords_nearFourier(13, 3.0, 26, rep=128)
         # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_nearFourier.pth"))
-        model.load_state_dict(torch.load(path, map_location=self.device))
+        model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
         model.eval()
         model.to(self.device)
         return model
@@ -434,10 +466,16 @@ class MergedNearFourierNetwork:
         # Normalize input
         nv = Xin.shape[-1]
         input = Xin[:, None].repeat_interleave(128, dim=-1).reshape(2, 128, nv, 128).to(self.device)
+        
+        # self.ip = self.input_param.T.reshape(2,2,1,1,-1)
+        # input_ = (input - self.ip[:,0]) / self.ip[:,1]
+        
         # use broadcasting
         input[0] = (input[0] - self.input_param[:, 0])/self.input_param[:, 1]
         input[1] = (input[1] - self.input_param[:, 2])/self.input_param[:, 3]
         
+        # if not torch.allclose(input, input_):
+        #     raise "batch err"
         return input.permute(2,3,0,1).reshape(nv, 2*128, -1).float()
     
     def forward(self, input):
@@ -447,7 +485,6 @@ class MergedNearFourierNetwork:
         with torch.no_grad():
             out =  self.model(input)
         
-        # out = out
         return out.reshape(nv, 128, 12, -1).permute(3, 0, 1, 2)
     
     def postProcess(self, out):
