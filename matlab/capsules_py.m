@@ -94,6 +94,7 @@ function repForce = repulsionForce(o,X,W)
 oc = curve;
 nv = numel(X(1,:));
 N = numel(X(:,1))/2;
+eta = o.length/N * 0.5;
 
 % Compute x,y coordinates of net repulsive force on each point of each
 % vesicle due to all other vesicles and walls
