@@ -329,7 +329,7 @@ selfRepVel = zeros(2*N,nv);
 if o.irepulsion
   [selfRepVelx, selfRepVely] = o.buildVelocityInNear(repForce, velx_real, vely_real, ...
       velx_imag, vely_imag, trans, rotate, rotCent, scaling, sortIdx);
-  selfRepVel = [selfRepVelx(:,:,1); selfRepVely(:,:,1)]; % velocity on the first layer
+  selfRepVel = [reshape(selfRepVelx(:,1,:),N,nv); reshape(selfRepVely(:,1,:),N,nv)]; % velocity on the first layer
 end
 
 opX = []; opY = [];
@@ -374,6 +374,7 @@ end % for k1
 
 
 % finally add the corrected nearfield to the farfield
+
 farField = farField + nearField + selfRepVel;
 
 end % computeStokesInteractions

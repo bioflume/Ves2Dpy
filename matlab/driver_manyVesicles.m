@@ -69,12 +69,16 @@ relaxNetInputNorm = [-8.430413700466488e-09; 0.06278684735298157; ...
 relaxNetOutputNorm = [-2.884585348361668e-10; 0.00020574081281665713; ...
     -5.137390512999218e-10; 0.0001763451291481033];
 
+irepulsion = true;
+
 mlarm = MLARM_ManyFree_py(dt,vinf,oc,advNetInputNorm,...
         advNetOutputNorm,relaxNetInputNorm,relaxNetOutputNorm,...
         nearNetInputNorm,nearNetOutputNorm,tenSelfNetInputNorm,...
-        tenSelfNetOutputNorm,tenAdvNetInputNorm,tenAdvNetOutputNorm);
+        tenSelfNetOutputNorm,tenAdvNetInputNorm,tenAdvNetOutputNorm,irepulsion);
 
 [~,mlarm.area0,mlarm.len0] = oc.geomProp(X);
+
+
 
 % save the initial data 
 fid = fopen(fileName,'w');
