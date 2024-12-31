@@ -91,9 +91,10 @@ function repForce = repulsionForce(o,X,W)
 % Repulsion is computed using the discrete penalty layers given in Grinspun
 % et al. (2009), Asynchronuous Contact Mechanics.
 
-oc = curve;
+oc = curve_py;
 nv = numel(X(1,:));
 N = numel(X(:,1))/2;
+eta = o.length/N * 0.5;
 
 % Compute x,y coordinates of net repulsive force on each point of each
 % vesicle due to all other vesicles and walls

@@ -15,8 +15,6 @@ tenSelfNetInputNorm
 tenSelfNetOutputNorm
 tenAdvNetInputNorm
 tenAdvNetOutputNorm
-torchLaplaceInNorm
-torchLaplaceOutNorm
 area0
 len0
 irepulsion
@@ -331,7 +329,7 @@ selfRepVel = zeros(2*N,nv);
 if o.irepulsion
   [selfRepVelx, selfRepVely] = o.buildVelocityInNear(repForce, velx_real, vely_real, ...
       velx_imag, vely_imag, trans, rotate, rotCent, scaling, sortIdx);
-  selfRepVel = [selfRepVelx(:,:,1); selfRepVely(:,:,1)]; % velocity on the first layer
+  selfRepVel = [reshape(selfRepVelx(:,1,:),N,nv); reshape(selfRepVely(:,1,:),N,nv)]; % velocity on the first layer
 end
 
 opX = []; opY = [];
@@ -376,6 +374,7 @@ end % for k1
 
 
 % finally add the corrected nearfield to the farfield
+
 farField = farField + nearField + selfRepVel;
 
 end % computeStokesInteractions
@@ -706,8 +705,7 @@ N = numel(X(:,1))/2;
 nv = numel(X(1,:));
 
 oc = o.oc;
-in_param = o.torchLaplaceInNorm;
-out_param = o.torchLaplaceOutNorm;
+
 
 nlayers = 5; % 4 of them are predicted -- 
 % Laplace integral on the layer aligning with vesicle is known and zero
@@ -719,61 +717,28 @@ dlayer = [-1; -1/2; 0; 1; 2] * 1/N;
 
 % Density function is constant.  Pad second half of it with zero
 f = [ones(N,nv);zeros(N,nv)];
-% standardize input
-Xstand = zeros(size(X));
-nv = numel(X(1,:));
-scaling = zeros(nv,1);
-rotate = zeros(nv,1);
-rotCent = zeros(2,nv);
-trans = zeros(2,nv);
-sortIdx = zeros(Nnet,nv);
 
-tracersX = zeros(2*N,5,nv);
+vesicle = capsules_py(X,[],[],o.kappa,1);
+xvesicle = vesicle.X(1:end/2,:); yvesicle = vesicle.X(end/2+1:end,:);
 
+xlayers = zeros(N,nlayers,nv);
+ylayers = zeros(N,nlayers,nv);
 for k = 1 : nv
-  [Xstand(:,k),scaling(k),rotate(k),rotCent(:,k),trans(:,k),sortIdx(:,k)] = o.standardizationStep(X(:,k),N);
-  [~,tang] = oc.diffProp(Xstand(:,k));
+  [~,tang] = oc.diffProp(X(:,k));
   nx = tang(N+1:2*N);
   ny = -tang(1:N);
 
   for il = 1 : nlayers 
-    tracersX(:,il,k) = [Xstand(1:end/2,k)+nx*dlayer(il); Xstand(end/2+1:end,k)+ny*dlayer(il)];
+    xlayers(:,il,k) = X(1:end/2,k)+nx*dlayer(il); 
+    ylayers(:,il,k) = X(end/2+1:end,k)+ny*dlayer(il);
   end
 end
 
-% Normalize input
-input_net = zeros(nv,2*N);
-
-for k = 1 : nv
-  input_net(k,1,:) = (Xstand(1:end/2,k)-in_param(1,1))/in_param(1,2);
-  input_net(k,2,:) = (Xstand(end/2+1:end,k)-in_param(1,3))/in_param(1,4);
-end
-
-
-input_conv = py.numpy.array(input_net);
-[Xpredict] = pyrunfile("laplaceIntegral_predict.py","output_list",input_shape=input_conv);
-
-Xpredict = double(Xpredict); % let's say the output is (nv x 4 x N)
-laplaceDL = zeros(N,nv,5);
-% denormalize output
-for k = 1 : nv
-  laplaceDL(:,k,1) = Xpredict(k,1,:)*out_param(2,1) + out_param(1,1);
-  laplaceDL(:,k,2) = Xpredict(k,2,:)*out_param(2,2) + out_param(1,2);
-  laplaceDL(:,k,4) = Xpredict(k,3,:)*out_param(2,3) + out_param(1,3);
-  laplaceDL(:,k,5) = Xpredict(k,4,:)*out_param(2,4) + out_param(1,4);
-end 
-% outputs
-% velx_real, vely_real, velx_imag, vely_imag, xlayers, ylayers, trans, rotate, rotCent, scaling, sortIdx
-
-xlayers = zeros(N,5,nv);
-ylayers = zeros(N,5,nv);
-for k = 1 : nv
-  for il = 1 : 5
-     Xl = o.destandardize(tracersX(:,il,k),trans(:,k),rotate(k),rotCent(:,k),scaling(k),sortIdx(:,k));
-     xlayers(:,il,k) = Xl(1:end/2);
-     ylayers(:,il,k) = Xl(end/2+1:end);
-  end
-end
+% inside the vesicle and on the vesicle it is 1
+laplaceDL = zeros(N,5,nv);
+laplaceDL(:,:,1) = 1;
+laplaceDL(:,:,2) = 1;
+laplaceDL(:,:,3) = 1;
 
 
 % Do the far-field and correct near-field
