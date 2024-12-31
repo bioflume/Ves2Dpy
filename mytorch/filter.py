@@ -15,6 +15,8 @@ def interpft(x, N_new):
         Tensor: Interpolated data of length N_new.
     """
     N = x.size(0)
+    if N == N_new:
+        return x
     X = torch.fft.fft(x, dim=0)
     
     # If N_new > N, upsample (add zeros in the middle)
@@ -29,75 +31,138 @@ def interpft(x, N_new):
     # Inverse FFT and scale to maintain the correct amplitude
     return torch.fft.ifft(X_new, dim=0).real * (N_new / N)
 
-def upsThenFilterShape(X, Nup, modeCut):
+# def upsThenFilterShape(X, Nup, modeCut):
+#     """
+#     Delete high frequencies from the vesicle shape by upsampling and applying a filter.
+    
+#     Parameters:
+#         X (Tensor): Shape of the vesicle, with 2*N rows (x and y components) and nv columns.
+#         Nup (int): Number of points to upsample.
+#         modeCut (int): Cutoff mode to filter high frequencies.
+    
+#     Returns:
+#         Xfinal (Tensor): The filtered shape.
+#     """
+#     N = X.size(0) // 2  # Get the number of points (half of the length of X)
+#     nv = X.size(1)  # Get the number of columns (number of vesicles)
+
+#     # Frequency modes
+#     modes = torch.cat([torch.arange(0, Nup//2, device=X.device), torch.arange(-Nup//2, 0, device=X.device)])
+
+#     # Upsample x and y components
+#     xup = torch.stack([interpft(X[:N, k], Nup) for k in range(nv)], dim=1)
+#     yup = torch.stack([interpft(X[N:, k], Nup) for k in range(nv)], dim=1)
+
+#     Xfinal = torch.zeros_like(X)  # Initialize the result tensor
+
+#     for k in range(nv):
+#         z = xup[:, k] + 1j * yup[:, k]  # Complex form of the shape (z = x + iy)
+#         z_fft = torch.fft.fft(z, dim=0)  # FFT of z
+#         z_fft[torch.abs(modes) > modeCut] = 0  # Apply frequency cutoff
+#         z_ifft = torch.fft.ifft(z_fft, dim=0)  # Inverse FFT
+
+#         # Downsample back to original length and assign to result
+#         Xfinal[:N, k] = interpft(z_ifft.real, N)
+#         Xfinal[N:, k] = interpft(z_ifft.imag, N)
+
+#     return Xfinal
+
+def filterShape(X, modeCut):
     """
-    Delete high frequencies from the vesicle shape by upsampling and applying a filter.
+    Delete high frequencies from the vesicle shape by applying a filter.
     
     Parameters:
         X (Tensor): Shape of the vesicle, with 2*N rows (x and y components) and nv columns.
-        Nup (int): Number of points to upsample.
         modeCut (int): Cutoff mode to filter high frequencies.
     
     Returns:
         Xfinal (Tensor): The filtered shape.
     """
     N = X.size(0) // 2  # Get the number of points (half of the length of X)
-    nv = X.size(1)  # Get the number of columns (number of vesicles)
+    # nv = X.size(1)  # Get the number of columns (number of vesicles)
 
     # Frequency modes
-    modes = torch.cat([torch.arange(0, Nup//2, device=X.device), torch.arange(-Nup//2, 0, device=X.device)])
+    modes = torch.cat([torch.arange(0, N//2, device=X.device), torch.arange(-N//2, 0, device=X.device)])
 
-    # Upsample x and y components
-    xup = torch.stack([interpft(X[:N, k], Nup) for k in range(nv)], dim=1)
-    yup = torch.stack([interpft(X[N:, k], Nup) for k in range(nv)], dim=1)
+    z = X[:N] + 1j * X[N:]  # Complex form of the shape (z = x + iy)
+    z_fft = torch.fft.fft(z, dim=0)  # FFT of z
+    z_fft[torch.abs(modes) > modeCut] = 0  # Apply frequency cutoff
+    z_ifft = torch.fft.ifft(z_fft, dim=0)  # Inverse FFT
 
-    Xfinal = torch.zeros_like(X)  # Initialize the result tensor
+    # Xfinal[:N] = z_ifft.real
+    # Xfinal[N:] = z_ifft.imag
+    return torch.vstack((z_ifft.real, z_ifft.imag))
 
-    for k in range(nv):
-        z = xup[:, k] + 1j * yup[:, k]  # Complex form of the shape (z = x + iy)
-        z_fft = torch.fft.fft(z, dim=0)  # FFT of z
-        z_fft[torch.abs(modes) > modeCut] = 0  # Apply frequency cutoff
-        z_ifft = torch.fft.ifft(z_fft, dim=0)  # Inverse FFT
 
-        # Downsample back to original length and assign to result
-        Xfinal[:N, k] = interpft(z_ifft.real, N)
-        Xfinal[N:, k] = interpft(z_ifft.imag, N)
+# def upsThenFilterTension(X, Nup, modeCut):
+#     """
+#     Delete high frequencies from the vesicle shape by upsampling and applying a filter.
+    
+#     Parameters:
+#         X (Tensor): Shape of the vesicle, with 2*N rows (x and y components) and nv columns.
+#         Nup (int): Number of points to upsample.
+#         modeCut (int): Cutoff mode to filter high frequencies.
+    
+#     Returns:
+#         Xfinal (Tensor): The filtered shape.
+#     """
+#     N = X.size(0)  # Get the number of points (half of the length of X)
+#     nv = X.size(1)  # Get the number of columns (number of vesicles)
 
-    return Xfinal
+#     # Frequency modes
+#     modes = torch.cat([torch.arange(0, Nup//2, device=X.device), torch.arange(-Nup//2, 0, device=X.device)])
 
-def upsThenFilterTension(X, Nup, modeCut):
+#     xup = torch.stack([interpft(X[:, k], Nup) for k in range(nv)], dim=1)    
+
+#     Xfinal = torch.zeros_like(X)  # Initialize the result tensor
+
+#     for k in range(nv):
+#         z = xup[:, k] 
+#         z_fft = torch.fft.fft(z, dim=0)  # FFT of z
+#         z_fft[torch.abs(modes) > modeCut] = 0  # Apply frequency cutoff
+#         z_ifft = torch.fft.ifft(z_fft, dim=0)  # Inverse FFT
+
+#         # Downsample back to original length and assign to result
+#         Xfinal[:, k] = interpft(z_ifft.real, N)
+
+#     return Xfinal
+
+
+def filterTension(X, modeCut):
     """
-    Delete high frequencies from the vesicle shape by upsampling and applying a filter.
+    Delete high frequencies from tension by applying a filter.
     
     Parameters:
         X (Tensor): Shape of the vesicle, with 2*N rows (x and y components) and nv columns.
-        Nup (int): Number of points to upsample.
         modeCut (int): Cutoff mode to filter high frequencies.
     
     Returns:
         Xfinal (Tensor): The filtered shape.
     """
     N = X.size(0)  # Get the number of points (half of the length of X)
-    nv = X.size(1)  # Get the number of columns (number of vesicles)
+    # nv = X.size(1)  # Get the number of columns (number of vesicles)
 
     # Frequency modes
-    modes = torch.cat([torch.arange(0, Nup//2, device=X.device), torch.arange(-Nup//2, 0, device=X.device)])
+    modes = torch.cat([torch.arange(0, N//2), torch.arange(-N//2, 0)])  
 
-    xup = torch.stack([interpft(X[:, k], Nup) for k in range(nv)], dim=1)    
+    z_fft = torch.fft.fft(X, dim=0) 
+    z_fft[torch.abs(modes) > modeCut] = 0  # Apply frequency cutoff
+    z_ifft = torch.fft.ifft(z_fft, dim=0)  # Inverse FFT
 
-    Xfinal = torch.zeros_like(X)  # Initialize the result tensor
+    return z_ifft.real
 
-    for k in range(nv):
-        z = xup[:, k] 
-        z_fft = torch.fft.fft(z, dim=0)  # FFT of z
-        z_fft[torch.abs(modes) > modeCut] = 0  # Apply frequency cutoff
-        z_ifft = torch.fft.ifft(z_fft, dim=0)  # Inverse FFT
 
-        # Downsample back to original length and assign to result
-        Xfinal[:, k] = interpft(z_ifft.real, N)
+# device = torch.device("cuda:0")
+# for _ in range(10):
+#     x = torch.rand(128, 2)
+#     x1 = upsThenFilterTension(x, 128*2, 16)
+#     x2 = filterTension(x, 16)
 
-    return Xfinal
+#     print(torch.allclose(x1, x2))
 
+# x21 = upsThenFilterTension(x[:8,:], 4*8, 4)
+# x22 = upsThenFilterTension(x[8:,:], 4*8, 4)
+# print(x1)
 
 # x = torch.sin(torch.arange(32)*0.2) + torch.sin(torch.arange(32)*(-0.4)+5)
 # %matplotlib inline
