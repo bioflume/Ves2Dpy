@@ -39,7 +39,7 @@ class capsules:
 
         # center of vesicle.  Required for center of rotlets and
         # stokeslets in confined flows
-        self.center = torch.concat((torch.mean(X[:self.N, :], dim=0), torch.mean(X[self.N:, :], dim=0)))
+        # self.center = torch.concat((torch.mean(X[:self.N, :], dim=0), torch.mean(X[self.N:, :], dim=0)))
 
         # minimum arclength needed for near-singular integration
         _, _, length = oc.geomProp(X)
@@ -127,3 +127,49 @@ class capsules:
         # Imaginary part should be 0 since we are preforming a real operation
 
         return Ben, Ten, Div
+
+    
+    def repulsionForce(self, X, W):
+        """
+        repulsion_force(o, X, W) computes the artificial repulsion between vesicles.
+        W is the repulsion strength -- depends on the length and velocity scale
+        of the flow.
+
+        Repulsion is computed using the discrete penalty layers given in Grinspun
+        et al. (2009), Asynchronous Contact Mechanics.
+        """
+        # Number of vesicles and points
+        nv = X.shape[1]
+        N = X.shape[0] // 2
+
+        # Initialize net repulsive force on each point of each vesicle
+        rep_force = torch.zeros((2 * N, nv), dtype=torch.float64)
+
+        # Pairwise differences for x and y across all points and vesicles
+        dist_x = X[:N, :].unsqueeze(1).unsqueeze(3) - X[:N, :].unsqueeze(0).unsqueeze(2)  # Shape: (N, N, nv, nv)
+        dist_y = X[N:, :].unsqueeze(1).unsqueeze(3) - X[N:, :].unsqueeze(0).unsqueeze(2)  # Shape: (N, N, nv, nv)
+
+        # Compute the pairwise distances
+        dist = torch.sqrt(dist_x**2 + dist_y**2 + 1e-12)
+
+        # Mask out self-interactions
+        mask = torch.eye(nv, dtype=torch.bool, device=dist.device).unsqueeze(0).unsqueeze(0)  # Shape: (1, 1, nv, nv)
+        dist.masked_fill_(mask, float('inf'))  # Set self-distances to infinity
+
+        # Compute the maximum number of layers (L) for each distance
+        # eta = 0.5 * VesicleLength/Number of Points
+        eta = 0.5 / N
+        L = torch.floor(eta / dist)
+
+        # Compute stiffness values (dF)
+        dF = -L * (2 * L + 1) * (L + 1) / 3 + L * (L + 1) * eta / dist  # Shape: (N, N, nv, nv)
+
+        # Compute repulsion forces for all points in parallel
+        repx = torch.sum(dF * dist_x, dim=(1, 3)) # Shape: (N, nv)
+        repy = torch.sum(dF * dist_y, dim=(1, 3))  
+
+        # Concatenate x and y components and multiply by strength W
+        rep_force[:N, :] = W * repx
+        rep_force[N:, :] = W * repy
+
+        return rep_force
