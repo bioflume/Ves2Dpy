@@ -50,7 +50,7 @@ class Curve:
         # Compute the differential properties of X
         jac, tan, _ = self.diffProp(X)
         # Assign the normal as well
-        nx, ny = tan[tan.shape[0] // 2:,:], -tan[:tan.shape[0] // 2,:] 
+        nx, ny = tan[tan.shape[0] // 2:, :], -tan[:tan.shape[0] // 2, :] 
         x, y = X[:X.shape[0] // 2, :], X[X.shape[0] // 2:, :]
       
         center = torch.zeros((2, nv), dtype=torch.float64)
@@ -79,12 +79,6 @@ class Curve:
         N = X.shape[0] // 2
         # modes = torch.concatenate((torch.arange(0, N // 2), torch.tensor([0]), torch.arange(-N // 2 + 1, 0))).double()
         center = self.getPhysicalCenter(X)
-        
-        # tempX = torch.zeros_like(X)
-        # # tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - torch.mean(X[:X.shape[0] // 2], dim=0)
-        # # tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - torch.mean(X[X.shape[0] // 2:], dim=0)
-        # tempX[:X.shape[0] // 2] = X[:X.shape[0] // 2] - center[0]
-        # tempX[X.shape[0] // 2:] = X[X.shape[0] // 2:] - center[1]
         
         # for k in range(nv):
         #     x = tempX[:N, k]
@@ -156,7 +150,88 @@ class Curve:
 
         return IA
     
-    
+    def getIncAngle2(self, X):
+
+        """
+        Compute the inclination angle of each capsule. 
+        The inclination angle (IA) is the angle between the x-axis and the 
+        principal axis corresponding to the smallest principal moment of inertia.
+        """
+        nv = X.shape[1]
+        IA = torch.zeros(nv, dtype=torch.float64, device=X.device)
+
+        # Compute inclination angle on an upsampled grid
+        N = X.shape[0] // 2
+        modes = torch.cat((torch.arange(0, N // 2, dtype=torch.float64), 
+                        torch.tensor([0.0]), 
+                        torch.arange(-N // 2 + 1, 0, dtype=torch.float64)))
+
+        # Center each capsule
+        centX = self.getPhysicalCenter(X)
+        X[:N, :] -= centX[0]
+        X[N:, :] -= centX[1]
+
+        for k in range(nv):
+            x = X[:N, k]
+            y = X[N:, k]
+            
+            Dx = torch.real(torch.fft.ifft(1j * modes * torch.fft.fft(x)))
+            Dy = torch.real(torch.fft.ifft(1j * modes * torch.fft.fft(y)))
+            jac = torch.sqrt(Dx ** 2 + Dy ** 2)
+            tx = Dx / jac
+            ty = Dy / jac
+            nx, ny = ty, -tx  # n is the right-hand side of t
+            rdotn = x * nx + y * ny
+            rho2 = x ** 2 + y ** 2
+
+            J11 = 0.25 * torch.sum(rdotn * (rho2 - x ** 2) * jac) * 2 * torch.pi / N
+            J12 = 0.25 * torch.sum(rdotn * (-x * y) * jac) * 2 * torch.pi / N
+            J21 = 0.25 * torch.sum(rdotn * (-y * x) * jac) * 2 * torch.pi / N
+            J22 = 0.25 * torch.sum(rdotn * (rho2 - y ** 2) * jac) * 2 * torch.pi / N
+
+            J = torch.tensor([[J11, J12], [J21, J22]])
+            eigvals, eigvecs = torch.linalg.eig(J)
+            
+            # Get the eigenvector corresponding to the smallest eigenvalue
+            ind = torch.argmin(torch.abs(eigvals))
+            V = eigvecs[:, ind].real
+
+            # Ensure first component of eigenvector has the same sign
+            if V[1] < 0:
+                V *= -1
+
+            # Inclination angle in [0, pi]
+            IA[k] = torch.atan2(V[1], V[0])
+
+            # Rotate to pi/2 and compute rotated coordinates
+            theta = -IA[k] + torch.pi / 2
+            x0rot = x * torch.cos(theta) - y * torch.sin(theta)
+            y0rot = x * torch.sin(theta) + y * torch.cos(theta)
+
+            # Rotate derivatives
+            Dx_rot = Dx * torch.cos(theta) - Dy * torch.sin(theta)
+            Dy_rot = Dx * torch.sin(theta) + Dy * torch.cos(theta)
+
+            # Compute areas for determining head-tail direction
+            idcs_top = y0rot >= 0
+            idcs_bot = ~idcs_top
+            area_top = torch.sum(x0rot[idcs_top] * Dy_rot[idcs_top] - y0rot[idcs_top] * Dx_rot[idcs_top]) * torch.pi / N
+            area_bot = torch.sum(x0rot[idcs_bot] * Dy_rot[idcs_bot] - y0rot[idcs_bot] * Dx_rot[idcs_bot]) * torch.pi / N
+
+            if area_bot >= 1.1 * area_top:
+                IA[k] += torch.pi
+            elif area_top < 1.1 * area_bot:
+                # Check areaRight and areaLeft
+                idcs_left = x0rot < 0
+                idcs_right = ~idcs_left
+                area_right = torch.sum(x0rot[idcs_right] * Dy_rot[idcs_right] - y0rot[idcs_right] * Dx_rot[idcs_right]) * torch.pi / N
+                area_left = torch.sum(x0rot[idcs_left] * Dy_rot[idcs_left] - y0rot[idcs_left] * Dx_rot[idcs_left]) * torch.pi / N
+                if area_left >= 1.1 * area_right:
+                    IA[k] += torch.pi
+
+        return IA
+
+
     def getPrincAxesGivenCentroid(self, X, center):
         """
         Compute the principal axes given the centroid.
@@ -346,8 +421,8 @@ class Curve:
 
         # % tolConstraint (which controls area and length) comes from the area-length
         # % tolerance for time adaptivity.
-        tolConstraint = 1e-3
-        tolFunctional = 1e-3
+        tolConstraint = 1e-2
+        tolFunctional = 1e-2
 
         # % Find the current area and length
         _, a, l = self.geomProp(X)
@@ -364,7 +439,7 @@ class Curve:
         X = X.cpu().numpy()
         area0 = area0.cpu().numpy()
         length0 = length0.cpu().numpy()
-        Xnew = np.zeros_like(X)
+        Xnew = np.copy(X)
 
         # def mycallback(Xi):
         #     global num_iter
@@ -372,6 +447,8 @@ class Curve:
         #     num_iter += 1
 
         for k in range(X.shape[1]):
+            if eAt[k] < tolConstraint and eLt[k] < tolConstraint:
+                continue
             def minFun(z):
                 return np.mean((z - X[:, k]) ** 2)
 
@@ -564,7 +641,7 @@ class Curve:
         # modes = torch.concatenate((torch.arange(0, N // 2), [0], torch.arange(-N // 2 + 1, 0)))
         modes = torch.concatenate((torch.arange(0, N // 2), torch.arange(-N // 2, 0))).to(X.device).double()
         jac, _, _ = self.diffProp(X)
-        tol = 1e-10
+        tol = 1e-5
 
         # X_out = torch.zeros_like(X, device=X.device)
         # allGood = True
@@ -590,10 +667,10 @@ class Curve:
         if torch.any(to_redistribute):
             allGood = False
             ids = torch.arange(nv, device=X.device)[to_redistribute]
-            tStart = time.time()
+            # tStart = time.time()
             theta, _ = self.arcLengthParameter(X[:N, ids], X[N:, ids])
-            tEnd = time.time()
-            print(f'arcLengthParameter {tEnd - tStart} sec.')
+            # tEnd = time.time()
+            # print(f'arcLengthParameter {tEnd - tStart} sec.')
             theta = torch.from_numpy(theta).to(X.device)
             
             zX = X[:N, ids] + 1j * X[N:, ids]
@@ -702,8 +779,13 @@ class Curve:
         
         theta = np.zeros((N, X.shape[1]))
         for i in range(X.shape[1]):
-            theta[:,i] = CubicSpline(z1[:,i], z2)(torch.arange(N).cpu() * length[i].cpu() / N)
-
+            try:
+                theta[:,i] = CubicSpline(z1[:,i], z2)(torch.arange(N).cpu() * length[i].cpu() / N)
+                # theta[:,i] = interp1d(z1[:,i], z2, 'linear')(np.arange(N) * length[i].cpu().numpy() / N)
+            except:
+                print("CubicSpline has error")
+                print(f"we are at {i}-th vesicle, with shape {X[:, i]}")
+                
         # # Create interpolation function using cubic spline
         # interpolation_function = interp1d(z1, z2, kind='cubic')  # 'cubic' is equivalent to MATLAB's 'spline'
         # # Generate theta values with interpolation
@@ -820,3 +902,10 @@ class Curve:
             f = isa * torch.fft.ifft(IK * torch.fft.fft(f, dim=0), dim=0)
             
         return torch.real(f)
+
+# c = Curve()
+# x = torch.rand(32, 4)
+# # center = torch.ones((2, 4))
+# print(x)
+# V = c.getIncAngle2(x)
+# print(V)
