@@ -118,8 +118,8 @@ modes = [(0:N/2-1)';0;(-N/2+1:-1)'];
 
 centX = o.getPhysicalCenterShan(X);
 for k = 1 : nv
-  X(:,k) = [X(1:end/2,k)-centX(1);...
-      X(end/2+1:end,k)-centX(2)];
+  X(:,k) = [X(1:end/2,k)-centX(1,k);...
+      X(end/2+1:end,k)-centX(2,k)];
 end
 
 
@@ -158,25 +158,25 @@ for k = 1 : nv
     
     % 2) find areas (top, bottom)
     % need derivatives, so rotate the computed ones
-    Dx = Dx*cos(-IA(k)+pi/2) - Dy*sin(-IA(k)+pi/2);
-    Dy = Dx*sin(-IA(k)+pi/2) + Dy*cos(-IA(k)+pi/2);
+    Dx2 = Dx*cos(-IA(k)+pi/2) - Dy*sin(-IA(k)+pi/2);
+    Dy2 = Dx*sin(-IA(k)+pi/2) + Dy*cos(-IA(k)+pi/2);
     
     idcsTop = find(y0rot>=0); idcsBot = find(y0rot<0);
-    areaTop = sum(x0rot(idcsTop).*Dy(idcsTop)-y0rot(idcsTop).*...
-        Dx(idcsTop))/N*pi;
+    areaTop = sum(x0rot(idcsTop).*Dy2(idcsTop)-y0rot(idcsTop).*...
+        Dx2(idcsTop))/N*pi;
     
-    areaBot = sum(x0rot(idcsBot).*Dy(idcsBot)-y0rot(idcsBot).*...
-        Dx(idcsBot))/N*pi;
+    areaBot = sum(x0rot(idcsBot).*Dy2(idcsBot)-y0rot(idcsBot).*...
+        Dx2(idcsBot))/N*pi;
     
     if areaBot >= 1.1*areaTop
       IA(k) = IA(k) + pi;
     elseif areaTop < 1.1*areaBot  
       % if areaTop ~ areaBot, then check areaRight, areaLeft  
       idcsLeft = find(x0rot<0); idcsRight = find(x0rot>=0);
-      areaRight = sum(x0rot(idcsRight).*Dy(idcsRight)-y0rot(idcsRight).*...
-        Dx(idcsRight))/N*pi;
-      areaLeft = sum(x0rot(idcsLeft).*Dy(idcsLeft)-y0rot(idcsLeft).*...
-        Dx(idcsLeft))/N*pi;
+      areaRight = sum(x0rot(idcsRight).*Dy2(idcsRight)-y0rot(idcsRight).*...
+        Dx2(idcsRight))/N*pi;
+      areaLeft = sum(x0rot(idcsLeft).*Dy2(idcsLeft)-y0rot(idcsLeft).*...
+        Dx2(idcsLeft))/N*pi;
       if areaLeft >= 1.1*areaRight
         IA(k) = IA(k) + pi;
       end

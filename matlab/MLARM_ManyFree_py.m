@@ -306,17 +306,25 @@ xvesicle = vesicle.X(1:end/2,:); yvesicle = vesicle.X(end/2+1:end,:);
 % Total force density on vesicles
 totalForce = tracJump + repForce;
 
+% UPSAMPLE THE SOURCES TO N^{3/2}
+Nup = ceil(sqrt(N))*N;
+Xup = [interpft(xvesicle,Nup);interpft(yvesicle,Nup)];
+vesicleUp = capsules(Xup,[],[],o.kappa,1,0);
+totalForceUp = [interpft(totalForce(1:end/2,:),Nup);interpft(totalForce(end/2+1:end,:),Nup)];
+
+
 % Compute near/far hydro interactions
 % with upsampling by 2
 NearV2V = vesicle.getZone([],1);    
 zone = NearV2V.zone;
 
-
-% First calculate the far-field
-farField = zeros(2*N,nv);
+% USE UPSAMPLED SOURCES IN INTERACTIONS 
+% MAKE SURE THE SAME ONES USED IN CORRECTING NEAR-FIELD WHEN SUBTRACTING
+% First calculate the far-field 
+farField = zeros(2*N,nv); 
 for k = 1 : nv
   K = [(1:k-1) (k+1:nv)];
-  farField(:,k) = o.exactStokesSL(vesicle, totalForce, vesicle.X(:,k), K);
+  farField(:,k) = o.exactStokesSL(vesicleUp, totalForceUp, vesicle.X(:,k), K);
 end
 
 % Predict velocity on layers
@@ -353,7 +361,8 @@ for k1 = 1 : nv
     if numel(J) ~= 0
       % need tp subtract off contribution due to vesicle k1 since its layer
       % potential will be evaulated through interpolation
-      potTar = o.exactStokesSL(vesicle, totalForce, [xvesicle(J,k2);yvesicle(J,k2)],k1);
+      % UPSAMPLED SOURCES SUBTRACTED
+      potTar = o.exactStokesSL(vesicleUp, totalForceUp, [xvesicle(J,k2);yvesicle(J,k2)],k1);
       nearField(J,k2) = nearField(J,k2) - potTar(1:numel(J));
       nearField(J+N,k2) = nearField(J+N,k2) - potTar(numel(J)+1:end);
          
