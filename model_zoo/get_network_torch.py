@@ -25,8 +25,12 @@ class RelaxNetwork:
     
     def loadModel(self, model_path):
         model = pdeNet_Ves_factor_periodic(14, 2.9)
-        model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
+        # model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
+        model = torch.jit.load(model_path, map_location=self.device)
         model.to(self.device)
+        # model_scripted = torch.jit.script(model) # Export to TorchScript
+        # model_scripted.save("../trained/torch_script_models/ves_relax_DIFF_June8_625k_dt1e-5.pt")
+        
         model.eval()
         return model
     
@@ -44,7 +48,7 @@ class RelaxNetwork:
         Xin[:N] = (Xin[:N] - x_mean) / x_std
         Xin[N:] = (Xin[N:] - y_mean) / y_std
 
-        XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float64).to(self.device)
+        XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float32).to(self.device)
         XinitShape[:, 0, :] = Xin[:N].T
         XinitShape[:, 1, :] = Xin[N:].T
         # XinitConv = torch.from_numpy(XinitShape).float()
@@ -59,7 +63,7 @@ class RelaxNetwork:
         out_y_mean = self.out_param[2]
         out_y_std = self.out_param[3]
 
-        DXout = torch.zeros((2*N, nv), dtype=torch.float64).to(self.device)
+        DXout = torch.zeros((2*N, nv), dtype=torch.float32).to(self.device)
         DXout[:N] = (DXpred[:, 0, :] * out_x_std + out_x_mean).T
         DXout[N:] = (DXpred[:, 1, :] * out_y_std + out_y_mean).T
         return DXout
@@ -68,9 +72,9 @@ class RelaxNetwork:
         Xin_copy = Xin.clone()
         input = self.preProcess(Xin)
         self.model.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             DXpred = self.model(input.float())
-        DX = self.postProcess(DXpred.double())
+        DX = self.postProcess(DXpred)
         DX = DX / 1E-5 * self.dt
         Xpred = Xin_copy + DX
         return Xpred
@@ -119,8 +123,11 @@ class MergedAdvNetwork:
         # torch.save(model.state_dict(), "../trained/2024Oct_ves_merged_adv.pth")
 
         model = Net_merge_advection(12, 1.7, 20, rep=127)
-        model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
+        # model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
+        model = torch.jit.load(model_path, map_location=self.device)
         # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/2024Oct_ves_merged_adv.pth"))
+        # model_scripted = torch.jit.script(model) # Export to TorchScript
+        # model_scripted.save("../trained/torch_script_models/2024Oct_ves_merged_adv.pt")
         model.eval()
         model.to(self.device)
         return model
@@ -143,19 +150,19 @@ class MergedAdvNetwork:
         y_std[63] = 1
 
 
-        coords = torch.zeros((nv, 2*rep, 128), dtype=torch.float64).to(device)
+        coords = torch.zeros((nv, 2*rep, 128), dtype=torch.float32).to(device)
         coords[:, :rep, :] = ((multiX[:N] - x_mean) / x_std).permute(1,2,0)
         coords[:, rep:, :] = ((multiX[N:] - y_mean) / y_std).permute(1,2,0)
 
         # coords (N,2*rep,128) -> input_coords (nv,rep,256)
         input_coords = torch.concat((coords[:,:rep], coords[:,rep:]), dim=-1)
         # prepare fourier basis
-        theta = np.arange(N)/N*2*np.pi
+        theta = torch.arange(N, device=device)/N*2*torch.pi
         theta = theta.reshape(N,1)
-        bases = 1/N*np.exp(1j*theta*np.arange(N).reshape(1,N))
+        bases = 1/N * torch.exp(1j*theta*torch.arange(N).reshape(1,N))
         # specify which mode
-        rr, ii = np.real(bases[:,s-1:t]), np.imag(bases[:,s-1:t])
-        basis = torch.from_numpy(np.concatenate((rr,ii),axis=0)).T.reshape(1,rep,256).to(device)
+        rr, ii = torch.real(bases[:,s-1:t]), np.imag(bases[:,s-1:t])
+        basis = torch.concat((rr,ii), dim=0).T.reshape(1,rep,256)
         # add the channel of fourier basis
         # one_mode_inputs = [torch.concat((input_coords[:, [k]], basis.repeat(nv,1,1)[:,[k]]), dim=1) for k in range(rep)]
         # input_net = torch.concat(tuple(one_mode_inputs), dim=1).to(device) # input_net (nv, 254, 256)
@@ -168,7 +175,7 @@ class MergedAdvNetwork:
 
         # Predict using neural networks
         self.model.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             # Xpredict of size (127, nv, 2, 256)
             Xpredict = self.model(interleaved.float()).reshape(-1,rep,2,256).transpose(0,1)
         
@@ -193,74 +200,7 @@ class MergedAdvNetwork:
         # if not torch.allclose(xpred_, Xpredict):
         #     raise "batch err"
 
-        return xpred_.double()
-
-    # def TODOloadModel_grouped(self): # TO DO 
-        
-    #     Xpredict = torch.zeros(127, nv, 2, 256).to(device)
-    #     # prepare fourier basis
-    #     theta = np.arange(N)/N*2*np.pi
-    #     theta = theta.reshape(N,1)
-    #     bases = 1/N*np.exp(1j*theta*np.arange(N).reshape(1,N))
-
-    #     for i in range(127//num_modes+1):
-    #         # from s mode to t mode, both end included
-    #         s = 2 + i*num_modes
-    #         t = min(2 + (i+1)*num_modes -1, 128)
-    #         print(f"from mode {s} to mode {t}")
-    #         rep = t - s + 1 # number of repetitions
-    #         Xstand = Xstand.reshape(2*N, nv, 1)
-    #         multiX = torch.from_numpy(Xstand).float().repeat(1,1,rep)
-
-    #         x_mean = self.advNetInputNorm[s-2:t-1][:,0]
-    #         x_std = self.advNetInputNorm[s-2:t-1][:,1]
-    #         y_mean = self.advNetInputNorm[s-2:t-1][:,2]
-    #         y_std = self.advNetInputNorm[s-2:t-1][:,3]
-
-    #         coords = torch.zeros((nv, 2*rep, 128)).to(device)
-    #         coords[:, :rep, :] = ((multiX[:N] - x_mean) / x_std).permute(1,2,0)
-    #         coords[:, rep:, :] = ((multiX[N:] - y_mean) / y_std).permute(1,2,0)
-
-    #         # coords (N,2*rep,128) -> (N,rep,256)
-    #         input_coords = torch.concat((coords[:,:rep], coords[:,rep:]), dim=-1)
-    #         # specify which mode
-    #         rr, ii = np.real(bases[:,s-1:t]), np.imag(bases[:,s-1:t])
-    #         basis = torch.from_numpy(np.concatenate((rr,ii),axis=-1)).float().reshape(1,rep,256).to(device)
-    #         # add the channel of fourier basis
-    #         one_mode_inputs = [torch.concat((input_coords[:, [k]], basis.repeat(nv,1,1)[:,[k]]), dim=1) for k in range(rep)]
-    #         input_net = torch.concat(tuple(one_mode_inputs), dim=1).to(device)
-
-    #         # prepare the network
-    #         model = Net_merge_advection(12, 1.7, 20, rep=rep)
-    #         dicts = []
-    #         models = []
-    #         for l in range(s, t+1):
-    #             # path = "/work/09452/alberto47/ls6/vesicle/save_models/ves_fft_models/ves_fft_mode"+str(i)+".pth"
-    #             path = "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/ves_adv_trained/ves_fft_mode"+str(l)+".pth"
-    #             dicts.append(torch.load(path, map_location=device))
-    #             subnet = Net_ves_adv_fft(12, 1.7, 20)
-    #             subnet.load_state_dict(dicts[-1])
-    #             models.append(subnet.to(device))
-
-    #         # organize and match trained weights
-    #         dict_keys = dicts[-1].keys()
-    #         new_weights = {}
-    #         for key in dict_keys:
-    #             key_comps = key.split('.')
-    #             if key_comps[-1][0:3] =='num':
-    #                 continue
-    #             params = []
-    #             for dict in dicts:
-    #                 params.append(dict[key])
-    #             new_weights[key] = torch.concat(tuple(params),dim=0)
-    #         model.load_state_dict(new_weights, strict=True)
-    #         model.eval()
-    #         model.to(device)
-
-    #         # Predict using neural networks
-    #         with torch.no_grad():
-    #             Xpredict[s-2:t-1] = model(input_net).reshape(-1,rep,2,256).transpose(0,1)
-
+        return xpred_ #.double()
         
 
 class TenSelfNetwork:
@@ -277,8 +217,12 @@ class TenSelfNetwork:
     
     def loadModel(self, model_path):
         model = Net_ves_selften(12, 2.4, 26)
-        model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
-        model.to(self.device)
+        # model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
+        # model.to(self.device)
+        # model_scripted = torch.jit.script(model) # Export to TorchScript
+        # model_scripted.save("../trained/torch_script_models/Ves_2024Oct_selften_12blks_loss_0.00566cuda1.pt")
+        model = torch.jit.load(model_path, map_location=self.device)
+        
         model.eval()
         return model
     
@@ -294,18 +238,18 @@ class TenSelfNetwork:
         y_std = self.input_param[3]
         
         # Adjust the input shape for the network
-        # XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float64).to(self.device)
+        # XinitShape = torch.zeros((nv, 2, 128), dtype=torch.float32).to(self.device)
         # for k in range(nv):
         #     XinitShape[k, 0, :] = (Xin[:N, k] - x_mean) / x_std
         #     XinitShape[k, 1, :] = (Xin[N:, k] - y_mean) / y_std
         
-        XinitShape_ = torch.zeros((nv, 2, 128), dtype=torch.float64).to(self.device)
+        XinitShape_ = torch.zeros((nv, 2, 128), dtype=torch.float32).to(self.device)
         XinitShape_[:, 0, :] = (Xin[:N].T - x_mean) / x_std
         XinitShape_[:, 1, :] = (Xin[N:].T - y_mean) / y_std
         
         # if not torch.allclose(XinitShape, XinitShape_):
         #     raise "batch err"
-        return XinitShape_.float()
+        return XinitShape_ #.float()
     
     def postProcess(self, pred):
         # pred has shape (nv, 1, N)
@@ -328,7 +272,7 @@ class TenSelfNetwork:
     def forward(self, Xin):
         input = self.preProcess(Xin.to(self.device))
         self.model.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             pred = self.model(input)
         tenPredstand = self.postProcess(pred)
         return tenPredstand
@@ -374,8 +318,13 @@ class MergedTenAdvNetwork:
 
         model = Net_ves_merge_advten(12, 2.5, 24, rep=127)
         # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_advten.pth"))
-        model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
+        # model.load_state_dict(torch.load(model_path, map_location=self.device, weights_only=True))
+        # model_scripted = torch.jit.script(model) # Export to TorchScript
+        # model_scripted.save("../trained/torch_script_models/2024Oct_ves_merged_advten.pt")
+        model = torch.jit.load(model_path, map_location=self.device)
+        
         model.eval()
+        
         model.to(self.device)
         return model
     
@@ -393,7 +342,7 @@ class MergedTenAdvNetwork:
         nv = inp.shape[0]
         # input = torch.from_numpy(input).float().to(self.device)
         self.model.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             out =  self.model(inp.float())
         
         return out.reshape(nv, 127, 2, -1).permute(2, 3, 0, 1)
@@ -401,7 +350,7 @@ class MergedTenAdvNetwork:
     def postProcess(self, out):
         # out shape : (2, 128, nv, 127)
         # use broadcasting
-        output = torch.zeros_like(out, dtype=torch.float64).to(self.device) # 
+        output = torch.zeros_like(out, dtype=torch.float32).to(self.device) # 
         output[0] = out[0] * self.out_param[:, 1] + self.out_param[:, 0]
         output[1] = out[1] * self.out_param[:, 3] + self.out_param[:, 2]
 
@@ -457,7 +406,12 @@ class MergedNearFourierNetwork:
             model = Net_ves_merge_nocoords_nearFourier(14, 3.2, 28, rep=128)
         # model = Net_ves_merge_nocoords_nearFourier(13, 3.0, 26, rep=128)
         # model.load_state_dict(torch.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy/trained/ves_merged_nearFourier.pth"))
-        model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
+        # model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
+        model = torch.jit.load(path, map_location=self.device)
+
+        # model_scripted = torch.jit.script(model) # Export to TorchScript
+        # model_scripted.save("../trained/torch_script_models/ves_merged_disth_nearFourier.pt")
+        
         model.eval()
         model.to(self.device)
         return model
@@ -482,7 +436,7 @@ class MergedNearFourierNetwork:
         nv = input.shape[0]
         # input = torch.from_numpy(input).float().to(self.device)
         self.model.eval()
-        with torch.no_grad():
+        with torch.inference_mode():
             out =  self.model(input)
         
         return out.reshape(nv, 128, 12, -1).permute(3, 0, 1, 2)
