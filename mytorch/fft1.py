@@ -1,7 +1,9 @@
 import torch
 import numpy as np
-torch.set_default_dtype(torch.float64)
+torch.set_default_dtype(torch.float32)
 import matplotlib.pyplot as plt
+import scipy
+from scipy.signal import resample
 
 class fft1:
     # class implements fft transformations. This includes computing
@@ -20,7 +22,7 @@ class fft1:
         N = f.shape[0]
 
         # build interpolation matrix
-        A = torch.zeros((len(y), N), dtype=torch.float64)
+        A = torch.zeros((len(y), N), dtype=torch.float32)
         for j in range(N):
             g = torch.zeros(N)
             g[j] = 1
@@ -39,9 +41,9 @@ class fft1:
         # function value at the points y
         # The points y are assumed to be in the 0-2*pi range.
 
-        A = torch.zeros((len(y), N), dtype=torch.float64)
+        A = torch.zeros((len(y), N), dtype=torch.float32)
         modes = torch.concatenate((torch.arange(0, N / 2), [0], torch.arange(-N / 2 + 1, 0)))
-        f = torch.zeros(N, dtype=torch.float64)
+        f = torch.zeros(N, dtype=torch.float32)
 
         for j in range(N):
             f[j] = 1
@@ -151,7 +153,7 @@ class fft1:
         # IK = modes(N) builds the order of the Fourier modes required for using
         # fft and ifft to do spectral differentiation
 
-        IK = 1j * torch.concatenate((torch.arange(0, N / 2), torch.tensor([0]), torch.arange(-N / 2 + 1, 0))).double()
+        IK = 1j * torch.concatenate((torch.arange(0, N / 2), torch.tensor([0]), torch.arange(-N / 2 + 1, 0))) #.double()
         IK = IK[:,None]
         if nv == 2:
             IK = torch.column_stack((IK, IK))
@@ -167,29 +169,29 @@ class fft1:
         Creates the Fourier differentiation matrix.
         """
         D1 = fft1.fourierInt(N)[0]
-        modes = torch.arange(-N//2, N//2).double()
+        modes = torch.arange(-N//2, N//2) #.double()
         D1 = torch.conj(D1.T) @ torch.diag(1j * N * modes) @ D1
 
         return D1
 
-    @staticmethod
-    def fourierRandP(N, Nup):
-        # [R,P] = fourierRandP(N,Nup) computes the Fourier restriction and
-        # prolongation operators so that functions can be interpolated from N
-        # points to Nup points (prolongation) and from Nup points to N points
-        # (restriction)
+    # @staticmethod
+    # def fourierRandP(N, Nup):
+    #     # [R,P] = fourierRandP(N,Nup) computes the Fourier restriction and
+    #     # prolongation operators so that functions can be interpolated from N
+    #     # points to Nup points (prolongation) and from Nup points to N points
+    #     # (restriction)
 
-        R = torch.zeros((N, Nup), dtype=torch.float64)
-        P = torch.zeros((Nup, N), dtype=torch.float64)
+    #     R = torch.zeros((N, Nup), dtype=torch.float32)
+    #     P = torch.zeros((Nup, N), dtype=torch.float32)
 
-        FF1, FFI1 = fft1.fourierInt(N)
-        FF2, FFI2 = fft1.fourierInt(Nup)
+    #     FF1, FFI1 = fft1.fourierInt(N)
+    #     FF2, FFI2 = fft1.fourierInt(Nup)
 
-        R = torch.matmul(FFI1, torch.hstack((torch.zeros((N, (Nup - N) // 2)), torch.eye(N), torch.zeros((N, (Nup - N) // 2))))*1j) \
-            .matmul(FF2)
-        R = torch.real(R)
-        P = R.T * Nup / N
-        return R, P
+    #     R = torch.matmul(FFI1, torch.hstack((torch.zeros((N, (Nup - N) // 2)), torch.eye(N), torch.zeros((N, (Nup - N) // 2))))*1j) \
+    #         .matmul(FF2)
+    #     R = torch.real(R)
+    #     P = R.T * Nup / N
+    #     return R, P
 
     @staticmethod
     def fourierInt(N):
@@ -199,7 +201,7 @@ class fft1:
         # the function values (FFI)
 
         theta = torch.arange(N).reshape(-1) * 2 * torch.pi / N
-        modes = torch.concatenate((torch.tensor([-N / 2]), torch.arange(-N / 2 + 1, N / 2))).double()
+        modes = torch.concatenate((torch.tensor([-N / 2]), torch.arange(-N / 2 + 1, N / 2))) #.double()
         FF = torch.exp(-1j * torch.outer(modes, theta)) / N
 
         if True:  # nargout > 1

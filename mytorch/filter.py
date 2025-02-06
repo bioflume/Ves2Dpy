@@ -1,5 +1,6 @@
 import torch
 import torch.fft
+torch.set_default_dtype(torch.float32)
 # import matplotlib.pyplot as plt
 
 def interpft(x, N_new):
@@ -15,13 +16,14 @@ def interpft(x, N_new):
         Tensor: Interpolated data of length N_new.
     """
     N = x.size(0)
+    nv = x.size(1)
     if N == N_new:
         return x
     X = torch.fft.fft(x, dim=0)
     
     # If N_new > N, upsample (add zeros in the middle)
     if N_new > N:
-        X_new = torch.zeros(N_new, dtype=X.dtype, device=x.device)
+        X_new = torch.zeros((N_new, nv), dtype=X.dtype, device=x.device)
         X_new[:N//2] = X[:N//2]
         X_new[-(N//2):] = X[-(N//2):]
     # If N_new < N, downsample (truncate the Fourier modes)

@@ -1,14 +1,17 @@
 import torch
 import numpy as np
-torch.set_default_dtype(torch.float64)
+torch.set_default_dtype(torch.float32)
 from scipy.interpolate import CubicSpline
 from scipy.optimize import minimize
 from fft1 import fft1
 from scipy.interpolate import interp1d
 import torch.nn as nn
 import time
+import cupy as cp
+from filter import interpft
 # import matlab.engine
 # eng = matlab.engine.start_matlab()
+
 
 class Curve:
     '''
@@ -31,7 +34,7 @@ class Curve:
     def setXY(self, x, y):
         """Set the [x,y] component of vector V on the curve."""
         N = x.shape[0]
-        V = torch.zeros(2 * N, x.shape[1], dtype=torch.float64, device=x.device)
+        V = torch.zeros(2 * N, x.shape[1], dtype=torch.float32, device=x.device)
         V[:N, :] = x
         V[N:, :] = y
         return V
@@ -53,7 +56,7 @@ class Curve:
         nx, ny = tan[tan.shape[0] // 2:, :], -tan[:tan.shape[0] // 2, :] 
         x, y = X[:X.shape[0] // 2, :], X[X.shape[0] // 2:, :]
       
-        center = torch.zeros((2, nv), dtype=torch.float64)
+        center = torch.zeros((2, nv), dtype=torch.float32)
         xdotn = x * nx
         ydotn = y * ny
         xdotn_sum = torch.sum(xdotn * jac, dim=0)
@@ -74,7 +77,7 @@ class Curve:
         % principal dim corresponding to the smallest principal moment of inertia
         """
         nv = X.shape[1]
-        # IA = torch.zeros(nv, dtype=torch.float64)
+        # IA = torch.zeros(nv, dtype=torch.float32)
         # % compute inclination angle on an upsampled grid
         N = X.shape[0] // 2
         # modes = torch.concatenate((torch.arange(0, N // 2), torch.tensor([0]), torch.arange(-N // 2 + 1, 0))).double()
@@ -158,22 +161,22 @@ class Curve:
         principal axis corresponding to the smallest principal moment of inertia.
         """
         nv = X.shape[1]
-        IA = torch.zeros(nv, dtype=torch.float64, device=X.device)
+        IA = torch.zeros(nv, dtype=torch.float32, device=X.device)
 
         # Compute inclination angle on an upsampled grid
         N = X.shape[0] // 2
-        modes = torch.cat((torch.arange(0, N // 2, dtype=torch.float64), 
+        modes = torch.cat((torch.arange(0, N // 2, dtype=torch.float32), 
                         torch.tensor([0.0]), 
-                        torch.arange(-N // 2 + 1, 0, dtype=torch.float64)))
+                        torch.arange(-N // 2 + 1, 0, dtype=torch.float32)))
 
         # Center each capsule
         centX = self.getPhysicalCenter(X)
-        X[:N, :] -= centX[0]
-        X[N:, :] -= centX[1]
+        # X[:N, :] -= centX[0]
+        # X[N:, :] -= centX[1]
 
         for k in range(nv):
-            x = X[:N, k]
-            y = X[N:, k]
+            x = X[:N, k] - centX[0, k]
+            y = X[N:, k] - centX[1, k]
             
             Dx = torch.real(torch.fft.ifft(1j * modes * torch.fft.fft(x)))
             Dy = torch.real(torch.fft.ifft(1j * modes * torch.fft.fft(y)))
@@ -246,7 +249,7 @@ class Curve:
         """
         N = X.shape[0] // 2  # Number of points
         nv = X.shape[1]  # Number of variables
-        # multiple_V = torch.zeros((2,nv), dtype=torch.float64)
+        # multiple_V = torch.zeros((2,nv), dtype=torch.float32)
         
         # for k in range(nv):
         #     # Compute the centered coordinates
@@ -436,9 +439,9 @@ class Curve:
         print("entering a & l correction")
         options = {'maxiter': 300, 'disp': True}
 
-        X = X.cpu().numpy()
-        area0 = area0.cpu().numpy()
-        length0 = length0.cpu().numpy()
+        X = X.cpu().double().numpy()
+        area0 = area0.double().cpu().numpy()
+        length0 = length0.double().cpu().numpy()
         Xnew = np.copy(X)
 
         # def mycallback(Xi):
@@ -453,7 +456,7 @@ class Curve:
                 return np.mean((z - X[:, k]) ** 2)
 
             cons = ({'type': 'eq', 'fun': lambda z: self.nonlcon(z, area0[k], length0[k])})
-            res = minimize(minFun, X[:, k], constraints=cons, options=options) #, tol=1e-2 , callback=mycallback
+            res = minimize(minFun, X[:, k], constraints=cons, options=options, tol=1e-2) # , callback=mycallback
             Xnew[:, k] = res.x
             # print(res.message)
             # print(f"function value{res.fun}") # , cons violation {res.maxcv}
@@ -461,7 +464,7 @@ class Curve:
                 print('Correction scheme failed, do not correct at this step')
                 Xnew[:, k] = X[:,k]
 
-        return torch.from_numpy(Xnew)
+        return torch.from_numpy(Xnew).float()
 
     def nonlcon(self, X, a0, l0):
         """Non-linear constraints required by minimize."""
@@ -562,7 +565,7 @@ class Curve:
             mu *= 0.8
             it += 1
 
-        Xnew = aug_lag_model.z.detach().double()
+        Xnew = aug_lag_model.z.detach() #.double()
             
         return Xnew
 
@@ -639,7 +642,7 @@ class Curve:
         N = X.shape[0] // 2
         nv = X.shape[1]
         # modes = torch.concatenate((torch.arange(0, N // 2), [0], torch.arange(-N // 2 + 1, 0)))
-        modes = torch.concatenate((torch.arange(0, N // 2), torch.arange(-N // 2, 0))).to(X.device).double()
+        modes = torch.concatenate((torch.arange(0, N // 2), torch.arange(-N // 2, 0))).to(X.device) #.double()
         jac, _, _ = self.diffProp(X)
         tol = 1e-5
 
@@ -668,10 +671,11 @@ class Curve:
             allGood = False
             ids = torch.arange(nv, device=X.device)[to_redistribute]
             # tStart = time.time()
-            theta, _ = self.arcLengthParameter(X[:N, ids], X[N:, ids])
+            # theta = self.arcLengthParameter(X[:N, ids], X[N:, ids])
+            theta = self.my_arcLengthParameter(X[:N, ids], X[N:, ids])
             # tEnd = time.time()
             # print(f'arcLengthParameter {tEnd - tStart} sec.')
-            theta = torch.from_numpy(theta).to(X.device)
+            # theta = torch.from_numpy(theta).to(X.device)
             
             zX = X[:N, ids] + 1j * X[N:, ids]
             zXh = torch.fft.fft(zX, dim=0) / N
@@ -739,64 +743,122 @@ class Curve:
 
     #     return y_new
 
-    def arcLengthParameter(self, x, y):
+    # def arcLengthParameter(self, x, y):
+    #     """
+    #     % theta = arcLengthParamter(o,x,y) finds a discretization of parameter
+    #     % space theta so that the resulting geometry will be equispaced in
+    #     % arclength
+    #     """
+    #     N = len(x)
+    #     t = torch.arange(N, dtype=torch.float32, device=x.device) * 2 * torch.pi / N
+    #     X = torch.concatenate((x, y))
+    #     if len(X.shape) < 2:
+    #         X = X.unsqueeze(-1)
+    #     _, _, length = self.geomProp(X)
+    #     # Find total perimeter
+        
+    #     Dx, Dy = self.getDXY(X)
+    #     # Find derivative
+    #     arc = torch.sqrt(Dx**2 + Dy**2)
+    #     arch = torch.fft.fft(arc, dim=0).T # (nv, N)
+    #     # modes = -1.0j / torch.hstack([torch.tensor([1e-10]).double(), (torch.arange(1,N // 2)), torch.tensor([1e-10]).double(), (torch.arange(-N//2+1,0))])  # FFT modes
+    #     modes = -1.0j / torch.hstack([torch.tensor([1e-10]), (torch.arange(1,N // 2)), torch.tensor([1e-10]), (torch.arange(-N//2+1,0))])  # FFT modes
+    #     modes[0] = 0
+    #     modes[N // 2] = 0
+    #     modes = modes.to(x.device) #(N)
+        
+    #     arc_length = torch.real(torch.fft.ifft(modes * arch, dim=-1) - \
+    #                             torch.sum(modes * arch, dim=-1).unsqueeze(-1) / N + arch[:,0:1] * t / N).T
+    #     # arc_length shape: (N, nv)
+    #     z1 = torch.concat((arc_length[-7:] - length, arc_length, arc_length[:7] + length), dim=0).cpu().numpy()
+    #     z2 = torch.hstack([t[-7:] - 2 * torch.pi, t, t[:7] + 2 * torch.pi]).cpu().numpy()
+    #     # % put in some overlap to account for periodicity
+
+    #     # Interpolate to obtain equispaced points
+    #     # dx = torch.diff(z1)
+    #     # dx = abs(dx)
+    #     # dump_z1 = torch.cumsum(torch.concat((z1[[0]], dx)), dim=0).cpu().numpy()
+    #     # if torch.any(dx <= 0):
+    #     #     print(dx)
+    #     #     print("haha")
+        
+    #     theta = np.zeros((N, X.shape[1]))
+    #     for i in range(X.shape[1]):
+    #         try:
+    #             theta[:,i] = CubicSpline(z1[:,i], z2)(torch.arange(N).cpu() * length[i].cpu() / N)
+    #             # theta[:,i] = interp1d(z1[:,i], z2, 'linear')(np.arange(N) * length[i].cpu().numpy() / N)
+    #         except:
+    #             print("CubicSpline has error")
+    #             print(f"we are at {i}-th vesicle, with shape {X[:, i]}")
+                
+    #     # # Create interpolation function using cubic spline
+    #     # interpolation_function = interp1d(z1, z2, kind='cubic')  # 'cubic' is equivalent to MATLAB's 'spline'
+    #     # # Generate theta values with interpolation
+    #     # theta = interpolation_function(torch.arange(N).cpu() * length.cpu() / N)
+
+    #     # theta = self.cubic_spline_interp(z1, z2, torch.arange(N).cpu() * length.cpu() / N)
+
+    #     # theta = eng.interp1(z1.numpy(),z2, np.arange(N)*length.cpu().numpy()/N,'spline')
+        
+    #     return theta
+
+    
+    
+    def my_arcLengthParameter(self, x, y):
         """
         % theta = arcLengthParamter(o,x,y) finds a discretization of parameter
         % space theta so that the resulting geometry will be equispaced in
         % arclength
         """
         N = len(x)
-        t = torch.arange(N, dtype=torch.float64, device=x.device) * 2 * torch.pi / N
-        X = torch.concatenate((x, y))
+        Nup = N * 4
+        t = torch.arange(Nup, dtype=torch.float32, device=x.device) * 2 * torch.pi / Nup
+
+        X = torch.concatenate((interpft(x, Nup), interpft(y, Nup)))
         if len(X.shape) < 2:
             X = X.unsqueeze(-1)
-        _, _, length = self.geomProp(X)
+        _, _, length = self.geomProp(torch.concat((x, y)))
         # Find total perimeter
         
         Dx, Dy = self.getDXY(X)
         # Find derivative
         arc = torch.sqrt(Dx**2 + Dy**2)
-        arch = torch.fft.fft(arc, dim=0).T # (nv, N)
-        modes = -1.0j / torch.hstack([torch.tensor([1e-10]).double(), (torch.arange(1,N // 2)), torch.tensor([1e-10]).double(), (torch.arange(-N//2+1,0))])  # FFT modes
+        arch = torch.fft.fft(arc.T, dim=1) # (nv, N)
+        # modes = -1.0j / torch.hstack([torch.tensor([1e-10]).double(), (torch.arange(1,Nup // 2)),
+        #                                torch.tensor([1e-10]).double(), (torch.arange(-Nup//2+1,0))])  # FFT modes
+        
+        modes = -1.0j / torch.hstack([torch.tensor([1e-10]), (torch.arange(1,Nup // 2)),
+                                       torch.tensor([1e-10]), (torch.arange(-Nup//2+1,0))])  # FFT modes
+        
         modes[0] = 0
-        modes[N // 2] = 0
+        modes[Nup // 2] = 0
         modes = modes.to(x.device) #(N)
         
+        # arc_length shape: (nv, N)
         arc_length = torch.real(torch.fft.ifft(modes * arch, dim=-1) - \
-                                torch.sum(modes * arch, dim=-1).unsqueeze(-1) / N + arch[:,0:1] * t / N).T
-        # arc_length shape: (N, nv)
-        z1 = torch.concat((arc_length[-7:] - length, arc_length, arc_length[:7] + length), dim=0).cpu().numpy()
-        z2 = torch.hstack([t[-7:] - 2 * torch.pi, t, t[:7] + 2 * torch.pi]).cpu().numpy()
+                                torch.sum(modes * arch, dim=-1, keepdim=True) / Nup + arch[:,0:1] * t / Nup)
+        
+        # z1 = torch.concat((arc_length.T[-7:] - length, arc_length.T, arc_length.T[:7] + length), dim=0)
+        # z2 = torch.hstack([t[-7:] - 2 * torch.pi, t, t[:7] + 2 * torch.pi])
         # % put in some overlap to account for periodicity
 
         # Interpolate to obtain equispaced points
-        # dx = torch.diff(z1)
-        # dx = abs(dx)
-        # dump_z1 = torch.cumsum(torch.concat((z1[[0]], dx)), dim=0).cpu().numpy()
-        # if torch.any(dx <= 0):
-        #     print(dx)
-        #     print("haha")
         
-        theta = np.zeros((N, X.shape[1]))
-        for i in range(X.shape[1]):
-            try:
-                theta[:,i] = CubicSpline(z1[:,i], z2)(torch.arange(N).cpu() * length[i].cpu() / N)
-                # theta[:,i] = interp1d(z1[:,i], z2, 'linear')(np.arange(N) * length[i].cpu().numpy() / N)
-            except:
-                print("CubicSpline has error")
-                print(f"we are at {i}-th vesicle, with shape {X[:, i]}")
-                
-        # # Create interpolation function using cubic spline
-        # interpolation_function = interp1d(z1, z2, kind='cubic')  # 'cubic' is equivalent to MATLAB's 'spline'
-        # # Generate theta values with interpolation
-        # theta = interpolation_function(torch.arange(N).cpu() * length.cpu() / N)
+        theta = torch.zeros((X.shape[1], N), device=X.device, dtype=X.dtype)
 
-        # theta = self.cubic_spline_interp(z1, z2, torch.arange(N).cpu() * length.cpu() / N)
-
-        # theta = eng.interp1(z1.numpy(),z2, np.arange(N)*length.cpu().numpy()/N,'spline')
+        target = torch.arange(1, N, device=X.device, dtype=X.dtype) * length[:, None] / N  # (nv, N-1)
+        indices = torch.searchsorted(arc_length, target) # torch real makes arc_length not contiguous
+        theta[:, 1:] = t[None, :].expand(X.shape[1], -1).gather(1, indices - 1) + \
+            (target - arc_length.gather(1, indices - 1)) *  (2 * torch.pi)
         
-        return theta, arc_length
 
+        # theta_ = np.zeros((N, X.shape[1]))
+        # for i in range(X.shape[1]):
+        #      theta_[:,i] = interp1d(z1[:,i].cpu().numpy(), z2.cpu().numpy(), 'linear')(np.arange(N) * length[i].cpu().numpy() / N)
+  
+        return theta.T
+
+    
     
     # def reparametrize(self, X, dX, maxIter=100):
     #     """Reparametrize to minimize the energy in the high frequencies."""
@@ -861,7 +923,7 @@ class Curve:
 
         N = len(x)
         modes = torch.concatenate((torch.arange(0, N // 2), torch.arange(-N // 2, 0)))[:,None]
-        modes = modes.double()
+        modes = modes #.double()
         # % get tangent vector at each point (tang_x;tang_y) 
         _, tang, _ = self.diffProp(torch.concatenate((x, y)).reshape(-1,1))
         # % get x and y components of normal vector at each point

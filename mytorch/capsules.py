@@ -1,4 +1,5 @@
 import torch
+torch.set_default_dtype(torch.float32)
 from scipy.interpolate import interp1d
 from curve_batch import Curve
 from fft1 import fft1
@@ -143,7 +144,7 @@ class capsules:
         N = X.shape[0] // 2
 
         # Initialize net repulsive force on each point of each vesicle
-        rep_force = torch.zeros((2 * N, nv), dtype=torch.float64)
+        rep_force = torch.zeros((2 * N, nv), dtype=torch.float32)
 
         # Pairwise differences for x and y across all points and vesicles
         dist_x = X[:N, :].unsqueeze(1).unsqueeze(3) - X[:N, :].unsqueeze(0).unsqueeze(2)  # Shape: (N, N, nv, nv)
