@@ -93,7 +93,7 @@ class Evo_Block(nn.Module):
         # features = [input[:, (self.ch+1)*i:(self.ch+1)*(i+1)-1] for i in range(self.rep)]
         # residual = torch.cat(tuple(features), dim=1)
         # ids = torch.concat([torch.arange((self.ch+1)*i, (self.ch+1)*(i+1)-1) for i in range(self.rep)])
-        mask = torch.ones(input.shape[1]).bool()
+        mask = torch.ones(input.shape[1], dtype=torch.bool)
         mask[self.ch::(self.ch+1)] = False
         residual = input[:,mask]
 
@@ -197,20 +197,22 @@ class Net_merge_advection(nn.Module):
         self.factor = factor
         self.ch = ch
         self.rep = rep
-        self.layer = self.make_layer(num_blocks-1, ch, rep)
+        self.layers = self.make_layer(num_blocks-1, ch, rep)
         self.starter = Starter_Block(factor, ch, rep)
         self.end = End_Block(factor, ch, rep)
 
     def make_layer(self, num_blocks, ch, rep):
-        layers = []
+        layers = nn.ModuleList()
         for _ in range(num_blocks):
             layers.append(Evo_Block(self.factor, ch, rep))
-        return nn.Sequential(*layers)
+        return layers
     
     def forward(self, input):
-        out = self.layer(self.starter(input))
-        ans = self.end(out)
-        return ans
+        out = self.starter(input)
+        for layer in self.layers:
+            out = layer(out)
+        out = self.end(out)
+        return out
 
 # model = Net_merge_advection(4,1.7,20,2)
 # print(model(torch.randn(1,4,256)).shape)
