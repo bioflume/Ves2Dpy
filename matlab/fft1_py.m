@@ -201,7 +201,7 @@ R = zeros(N,Nup);
 P = zeros(Nup,N);
 
 [FF1,FFI1] = fft1_py.fourierInt(N);
-[FF2,FFI2] = fft1.fourierInt(Nup);
+[FF2,FFI2] = fft1_py.fourierInt(Nup);
 
 R = FFI1 * [zeros(N,(Nup-N)/2) eye(N,N) zeros(N,(Nup-N)/2)] * FF2;
 R = real(R);
