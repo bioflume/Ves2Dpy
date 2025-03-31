@@ -13,6 +13,8 @@ Xwalls        % Points coordinates on walls
 walls         % walls capsules class
 area          % vesicles' initial area
 length        % vesicles' initial length
+kappa         % vesicles' bending stiffness
+viscCont      % vesicles' viscosity contrast
 dt            % Time step size
 currentTime   % current time needed for adaptive time stepping
 finalTime     % time horizon
@@ -41,7 +43,7 @@ bdiagWall     % precomputed inverse of block-diagonal precondtioner
 gmresTol      % GMRES tolerance
 gmresMaxIter  % maximum number of gmres iterations
 
-tstepTol      % maximum allowable error in area and length
+areaLenTol      % maximum allowable error in area and length
 
 NearV2V       % near-singular integration for vesicle to vesicle
 NearW2V       % near-singular integration for wall to vesicle
@@ -94,6 +96,11 @@ o.currentTime = 0;
 % Need the time horizon for adaptive time stepping
 o.finalTime = prams.T;
 
+% bending stiffness
+o.kappa = prams.kappa;
+
+% viscosity contrast
+o.viscCont = prams.viscCont; 
 
 % GMRES tolerance
 o.gmresTol = prams.gmresTol;
@@ -101,7 +108,7 @@ o.gmresTol = prams.gmresTol;
 o.gmresMaxIter = prams.gmresMaxIter;
 
 % Far field boundary condition built as a function handle
-o.farField = @(X,Xwalls) o.bgFlow(X,Xwalls,options.farField,...
+o.farField = @(X) o.bgFlow(X,Xwalls,options.farField,...
     'Speed',prams.farFieldSpeed,'chanWidth',prams.chanWidth,'vortexSize',...
     prams.vortexSize);
 
@@ -109,7 +116,7 @@ o.farField = @(X,Xwalls) o.bgFlow(X,Xwalls,options.farField,...
 o.confined = ~isempty(Xwalls);
 
 % Time step tolerance  
-o.tstepTol = prams.tstepTol;
+o.areaLenTol = prams.areaLenTol;
 
 % Repulsion between vesicles and vesicles-walls.
 % if there is only one vesicle, turn off repulsion
@@ -161,7 +168,7 @@ nvbd = numel(o.Xwalls(1,:)); % number of walls
 o.opWall = poten_py(Nbd);
   
 % velocity on solid walls coming from no-slip boundary condition
-[uwalls,~] = o.farField([],o.Xwalls);
+uwalls = o.farField([]);
 
 % build the walls
 o.walls = capsules_py(o.Xwalls,[],uwalls,zeros(nvbd,1),zeros(nvbd,1));
@@ -170,7 +177,7 @@ o.walls = capsules_py(o.Xwalls,[],uwalls,zeros(nvbd,1),zeros(nvbd,1));
 o.wallDLP = o.opWall.stokesDLmatrix(o.walls);
   
 % N0 to remove rank-1 deficiency
-o.wallN0 = potWall.stokesN0matrix(o.walls);
+o.wallN0 = o.opWall.stokesN0matrix(o.walls);
   
 % block diagonal preconditioner for solid walls
 o.bdiagWall = o.wallsPrecond();
@@ -179,11 +186,13 @@ end % initialConfined
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function [X,sigma,eta,RS,iter,iflag] = timeStep(o,...
-    Xstore,sigStore,etaStore,RSstore,viscCont,vesicle)
+    Xstore,sigStore,etaStore,RSstore)
 
 % [X,sigma,eta,RS,iter,iflag] = timeStep(o,...
 %     Xstore,sigStore,etaStore,RSstore,viscCont,vesicle)
 % uses implicit vesicle-vesicle interactions.  
+
+vesicle = capsules_py(Xstore,sigStore,[],o.kappa,o.viscCont);
 
 N = size(Xstore,1)/2; % Number of points per vesicle
 nv = size(Xstore,2); % Number of vesicles
@@ -194,7 +203,7 @@ nvbd = size(o.Xwalls,2);    % # of walls of the same discretization
 
 % constant that appears in front of time derivative in
 % vesicle dynamical equations
-alpha = (1 + viscCont)/2;  
+alpha = (1 + o.viscCont)/2;  
 
 
 % Build single layer potential matrix and put it in current object
@@ -206,7 +215,7 @@ o.Galpert = op.stokesSLmatrix(vesicle);
 % independent of the others.  Matrix is zero if there is no
 % viscosity contrast
 o.D = [];
-if any(viscCont ~= 1)
+if any(o.viscCont ~= 1)
   o.D = op.stokesDLmatrix(vesicle);
 end
  
@@ -286,7 +295,7 @@ end
 % add in viscosity contrast term due to each vesicle independent of the
 % others (o.D * Xo) from the previous solution followed by the term due
 % to all other vesicles (Fdlp)
-if (any(viscCont ~= 1))
+if (any(o.viscCont ~= 1))
   DXo = op.exactStokesDLdiag(vesicle,o.D,Xstore);
   rhs1 = rhs1 - (Fdlp + DXo) * diag(1./alpha);
 end
@@ -339,7 +348,7 @@ end
 % This is done implicitly in TimeMatVec
 if ~o.confined
     % Add in far-field condition (extensional, shear, etc.)
-  vInf = o.farField(Xstore,[]);
+  vInf = o.farField(Xstore);
   rhs1 = rhs1 + o.dt*vInf*diag(1./alpha);
 end
 % END TO COMPUTE RIGHT-HAND SIDE DUE TO SOLID WALLS
@@ -347,7 +356,7 @@ end
 
 % START TO COMPUTE THE RIGHT-HAND SIDE FOR THE INEXTENSIBILITY CONDITION
 % rhs2 is the right-hand side for the inextensibility condition
-rhs2 = rhs2 + vesicle.surfaceDiv(Xo); 
+rhs2 = rhs2 + vesicle.surfaceDiv(Xstore); 
 % END TO COMPUTE THE RIGHT-HAND SIDE FOR THE INEXTENSIBILITY CONDITION
 
 % The next makes sure that the rhs is all order one rather than have rhs3
@@ -408,9 +417,9 @@ if o.confined
   RS = RSstore(:,2:end);
   initGMRES = [initGMRES;etaStore(:);RS(:)];
 end
-
 % Use GMRES to solve for new positions, tension, density
 % function defined on the solid walls, and rotlets/stokeslets
+
 if o.usePreco 
   [Xn,iflag,~,I,~] = gmres(@(X) o.TimeMatVec(X,vesicle),...
       rhs,[],o.gmresTol,o.gmresMaxIter,...
@@ -422,13 +431,12 @@ else
   iter = I(2);
 end
 
-disp(['DONE, it took ' num2str(toc(tGMRES),'%2.2e') ' seconds']);
 % END OF SOLVING THE SYSTEM USING GMRES
 
 % allocate space for positions, tension, and density function
 X = zeros(2*N,nv);
 sigma = zeros(N,nv);
-eta = zeros(2*Nbd,nvbdSme);
+eta = zeros(2*Nbd,nvbd);
 RS = zeros(3,nvbd);
 
 % unstack the positions and tensions
@@ -493,7 +501,7 @@ valPos = zeros(2*N,nv);
 valTen = zeros(N,nv);
 % right-hand side that corresponds to solid wall equation
 if o.confined 
-  valWalls = zeros(2*Nbd,nvbdSme);
+  valWalls = zeros(2*Nbd,nvbd);
   % right-hand side corresponding to the rotlets and stokeslets
   valLets = zeros(3*(nvbd-1),1);
 end
@@ -815,7 +823,7 @@ function vel = RSlets(o,X,center,stokeslet,rotlet)
 % to the stokeslet and rotlet terms.  Center of the rotlet and
 % stokeslet is contained in center
 
-oc = curve;
+oc = curve_py;
 % set of points where we are evaluating the velocity
 [x,y] = oc.getXY(X);
 % the center of the rotlet/stokeslet terms
@@ -898,7 +906,7 @@ function Mat = wallsPrecond(o)
 walls = o.walls;
 Nbd = walls.N;
 nvbd = walls.nv;
-oc = curve;
+oc = curve_py;
 [x,y] = oc.getXY(walls.X);
 [nory,norx] = oc.getXY(walls.xt);
 nory = -nory;
@@ -1054,7 +1062,7 @@ function vInf = bgFlow(o,X,Xwalls,varargin)
 N = size(X,1)/2; % number of points per vesicle
 nv = size(X,2); % number of vesicles
 
-oc = curve;
+oc = curve_py;
 
 % Separate out x and y coordinates of vesicles
 [x,y] = oc.getXY(X);
@@ -1104,8 +1112,9 @@ elseif (any(strcmp(varargin,'tube')))
 
 elseif any(strcmp(varargin,'couette'));
   % there are several walls in this one
-  xwalls = Xwalls(1:end/2,1); ywalls = Xwalls(end/2+1:end,1);
-  Nbd = numel(xwalls);  
+  xwalls = Xwalls(1:end/2,:); ywalls = Xwalls(end/2+1:end,:);
+  Nbd = size(xwalls,1);  
+
   vInf = [zeros(2*Nbd,1) 1*[-ywalls(:,2)+mean(ywalls(:,2));xwalls(:,2)-mean(xwalls(:,2))]];
   
 elseif any(strcmp(varargin,'doubleCouette'))

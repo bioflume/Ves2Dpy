@@ -129,7 +129,9 @@ for k=1:vesicle.nv  % Loop over curves
 
     
     % upsampled single versicle
-    [tx,ty] = oc.getXY(vesicleUp.xt(:,k));
+    tx = vesicleUp.xt(1:end/2,k);
+    ty = vesicleUp.xt(end/2+1:end,k);
+    
     % Vesicle tangent
     sa = vesicleUp.sa(:,k)';
     % Jacobian
@@ -200,7 +202,7 @@ function N0 = stokesN0matrix(o,vesicle)
 % normal(x) \otimes normal(y) which removes the rank one defficiency of the
 % double-layer potential.  Need this operator for solid walls
 
-oc = curve;
+oc = curve_py;
 [x,y] = oc.getXY(vesicle.X); % Vesicle positions
 
 normal = [vesicle.xt(vesicle.N+1:2*vesicle.N,:);...
@@ -260,7 +262,7 @@ function N0 = exactStokesN0diag(o,vesicle,N0,f)
 % rule
 if isempty(N0)
   N = size(f,1)/2;
-  oc = curve;
+  oc = curve_py;
   [fx,fy] = oc.getXY(f(:,1));
   fx = fx.*vesicle.sa(:,1);
   fy = fy.*vesicle.sa(:,1);
@@ -364,7 +366,7 @@ function [laplaceDLPtar] = exactLaplaceDL(o,vesicle,f,Xtar,K1)
 % evaluated at Xtar.  Everything but Xtar is in the 2*N x nv format
 % Xtar is in the 2*Ntar x ncol format
 
-oc = curve;
+oc = curve_py;
 
 nx = vesicle.xt(vesicle.N+1:2*vesicle.N,:);
 ny = -vesicle.xt(1:vesicle.N,:);
@@ -443,7 +445,7 @@ den = (f.*[vesicle.sa;vesicle.sa]*2*pi/vesicle.N)* diag(1-vesicle.viscCont);
 % jacobian term and 2*pi/N accounted for here
 % have accounted for the scaling with (1-\nu) here
 
-oc = curve;
+oc = curve_py;
 [xsou,ysou] = oc.getXY(vesicle.X(:,K1));
 xsou = xsou(:); ysou = ysou(:);
 xsou = xsou(:,ones(Ntar,1))';
@@ -572,7 +574,7 @@ if tEqualS % sources == targets
       
     for k = 1:nvSou
       K = [(1:k-1) (k+1:nvSou)];
-      farField(:,k) = kernelDirect(vesicleUp,fup,[],Xtar(:,k),K);
+      farField(:,k) = kernelDirect(vesicleUp,fup,Xtar(:,k),K);
     end
       % This is a huge savings if we are using a direct method rather
       % than the fmm to evaluate the layer potential.  The speedup is
@@ -584,7 +586,7 @@ if tEqualS % sources == targets
   end
 
 else % sources ~= targets
-  [~,farField] = kernel(vesicleUp,fup,Xtar,1:nvSou);
+  farField = kernelDirect(vesicleUp,fup,Xtar,1:nvSou);
   % evaluate layer potential due to all 'vesicles' at all points in
   % Xtar;
 end
@@ -627,7 +629,7 @@ for k1 = 1:nvSou
 %     using local interpolant
       
       
-      [~,potTar] = kernelDirect(vesicleUp,fup,[Xtar(J,k2);Xtar(J+Ntar,k2)],k1);
+      potTar = kernelDirect(vesicleUp,fup,[Xtar(J,k2);Xtar(J+Ntar,k2)],k1);
       % Need to subtract off contribution due to vesicle k1 since its
       % layer potential will be evaulted using Lagrange interpolant of
       % nearby points

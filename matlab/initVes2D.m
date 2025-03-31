@@ -4,8 +4,8 @@ function [options,prams] = initVes2D(options,prams)
 
 
 PramList = {'N','nv','T','dt','Nbd','nvbd','kappa',...
-    'viscCont','gmresTol','gmresMaxIter','tstepTol','areaLenTol',...
-    'minDist','repStrength','farFieldSpeed'};
+    'viscCont','gmresTol','gmresMaxIter','areaLenTol',...
+    'minDist','repStrength','farFieldSpeed','chanWidth','vortexSize'};
 defaultPram.N = 64;
 defaultPram.nv = 1;
 defaultPram.Nbd = 0;
@@ -16,11 +16,12 @@ defaultPram.kappa = 1e-1;
 defaultPram.viscCont = 1;
 defaultPram.gmresTol = 1e-12;
 defaultPram.gmresMaxIter = 200;
-defaultPram.tstepTol = 1e-2;
 defaultPram.areaLenTol = 1e-2;
 defaultPram.repStrength = 900;
 defaultPram.minDist = 0.4;
 defaultPram.farFieldSpeed = 1;
+defaultPram.chanWidth = 2.5;
+defaultPram.vortexSize = 2.5;
 
 for k = 1:length(PramList)
   if ~isfield(prams,PramList{k})
@@ -30,7 +31,7 @@ for k = 1:length(PramList)
 end
 
 OptList = {'farField','repulsion','correctShape','reparameterization',...
-    'filterShape','usePreco','matFreeWalls','confined'};
+    'usePreco','matFreeWalls','confined'};
 defaultOpt.farField = 'shear';
 defaultOpt.repulsion = false;
 defaultOpt.correctShape = false;
