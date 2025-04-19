@@ -50,12 +50,12 @@ for ives = 1 : nves
   [~,NearV2T] = vesicle.getZone(tracers,2);
   
   % velocity on layers (the order is -h, -h/2, h/2, h)
-  VelOnGridModesReal = zeros(2*N,nlayers,nmodes); 
-  VelOnGridModesImag = zeros(2*N,nlayers,nmodes);
+  VelOnGridModesReal = zeros(2*N,nlayers,N); 
+  VelOnGridModesImag = zeros(2*N,nlayers,N);
   % velocity on the layer on the vesicle
-  selfVelModesReal = zeros(2*N,nmodes);
-  selfVelModesImag = zeros(2*N,nmodes);
-  for imode = 1 : nmodes
+  selfVelModesReal = zeros(2*N,N);
+  selfVelModesImag = zeros(2*N,N);
+  for imode = 1 : N
     forRealVels = [Br(:,imode); Bi(:,imode)];
     forImagVels = [-Bi(:,imode); Br(:,imode)];
 
