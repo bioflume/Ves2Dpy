@@ -1,4 +1,3 @@
-# %%
 import torch
 torch.set_default_dtype(torch.float32)
 import numpy as np
@@ -9,7 +8,7 @@ from tstep_biem import TStepBiem
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from tqdm import tqdm
-from filter import filterShape, interpft_vec
+from tools.filter import filterShape, interpft_vec
 
 def initVes2D(options=None, prams=None):
     """
@@ -80,15 +79,9 @@ def initVes2D(options=None, prams=None):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# fileName = './output_BIEM/ls.bin'  # To save simulation data
-fileName = './output_BIEM/linshi.bin'  # To save simulation data
-# fileName = './output_BIEM/linshi_nv32.bin'  # To save simulation data
-# fileName = './output_BIEM/ls_N128.bin'  # To save simulation data
-# fileName = './output_BIEM/ls_N128_continued.bin'  # To save simulation data
-# fileName = './output_BIEM/ls_N128_noNear.bin'  # To save simulation data
-# fileName = './output_BIEM/shear.bin'  # To save simulation data
-# fileName = './output_BIEM/TG_nv32_VF25.bin'  # To save simulation data
-# fileName = './output_BIEM/db_N32.bin'  # To save simulation data
+
+fileName = './output_BIEM/shear.bin'  # To save simulation data
+
 
 # Assume oc is your geometry utility class (like curve_py in MATLAB)
 oc = Curve()  # You need to define this with required methods
@@ -115,49 +108,13 @@ Xwalls = None
 # Create vesicles
 # ------------------------------
 
-# Initial ellipse shape
-# prams['N'] = 32
-# X0 = oc.ellipse(prams['N'], torch.tensor([0.65]))
-# _, _, length = oc.geomProp(X0)  # Get length
-# X0 = X0 / length  # Normalize to unit length
-
-# # # Position vesicles between cylinders
-# X1 = torch.vstack((X0[:prams['N']], X0[prams['N']:]))       # shifted right
-# X2 = torch.vstack((X0[:prams['N']]+0.22, X0[prams['N']:] + 0.15))       # shifted up
-# # X3 = torch.vstack((X0[:prams['N']]-0.2, X0[prams['N']:] - 0.15))       # shifted up
-# X = torch.cat((X1, X2), dim=1).to(device)
-
-# Xics = np.load("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/shear_N32.npy") ### INIT SHAPES FROM THE DATA SET
-# Xics = loadmat("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/ManyVesICsTaylorGreen/nv504IC.mat").get('X')
-# Xics = loadmat("/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/ManyVesICsTaylorGreen/nv1020IC.mat").get('X')
+# Initial shape
 Xics = loadmat("../VF25_TG32Ves.mat").get('X')[:, :3]
-# Xics = loadmat("../2000vesShape8_VF30.mat").get('X')
-# Xics = loadmat("../Nves_vs_dispersion_ICs/VF12_TG2220Ves.mat").get('X')[:, :2000]
-# Xics = np.load("TG_N32_dilute_last100_nv128.npy")[:, :, 0]
-# Xics = np.load("BIEM_TG_N128_last.npy")[:256, :]
-# sigma = torch.from_numpy(np.load("BIEM_TG_N128_last.npy")[256:, :]).to(device)
-# Xics = loadmat("../Nves_vs_dispersion_ICs/VF25_TG128Ves.mat").get('X')[:, :]
+
 sigma = None
 X = torch.from_numpy(Xics).float().to(device)
 X = interpft_vec(X, 128).to(device)
 
-
-# %matplotlib inline
-# Plot initial vesicles
-# plt.figure()
-# # plt.plot(X[:32, :], X[32:, :], 'r', linewidth=2)
-# plt.plot(X[:128, :], X[128:, :], 'r', linewidth=2)
-# # for i in range(X.shape[0]//2):
-# #     plt.text(X[i, 0], X[i+32, 0], str(i), fontsize=8, ha='center', va='bottom')
-# #     plt.text(X[i, 1], X[i+32, 1], str(i), fontsize=8, ha='center', va='bottom')
-#     # plt.text(X[i, 2], X[i+32, 2], str(i), fontsize=8, ha='center', va='bottom')
-
-# plt.axis("scaled")
-# plt.xlim([-0.3, 5.3])
-# plt.ylim([-0.3, 5.3])
-# plt.show()
-
-# %%
 
 # ------------------------------
 # Simulation parameters and options
@@ -210,7 +167,7 @@ with open(fileName, 'wb') as fid:
 print(prams)
 print(options)
 
-tt = TStepBiem(X, Xwalls, options, prams)  # You need to implement this class
+tt = TStepBiem(X, Xwalls, options, prams)
 
 if options['confined']:
     tt.initialConfined()
@@ -237,23 +194,12 @@ if options['confined']:
 time_ = 0.0
 modes = torch.concatenate((torch.arange(0, prams['N'] // 2), torch.arange(-prams['N'] // 2, 0))).to(X.device) #.double()
 
-# start = torch.cuda.Event(enable_timing=True)
-# end = torch.cuda.Event(enable_timing=True)
-# start.record()
-
-# end.record()
-# torch.cuda.synchronize()
-# print(f'standardizationStep {start.elapsed_time(end)/1000} sec.')
 
 for step in tqdm(range(int(prams['T'] / prams['dt']))):
 
-    # t_start = time.time()
 
     # Perform time step
-    # start.record()
     Xnew, sigma, eta, RS, iter_, iflag = tt.time_step(X, sigma, eta, RS)
-
-    # t_end = time.time() - t_start
 
     if options['reparameterization']:
         # Redistribute arc-length
@@ -263,10 +209,7 @@ for step in tqdm(range(int(prams['T'] / prams['dt']))):
         X = oc.alignCenterAngle(XnewO, Xnew)
     else:
         X = Xnew
-    
-    # end.record()
-    # torch.cuda.synchronize()
-    # print(f'One Time Step {start.elapsed_time(end)/1000} sec.')
+
 
     # start.record()
     if options['correctShape']:
@@ -275,10 +218,6 @@ for step in tqdm(range(int(prams['T'] / prams['dt']))):
     
     # X = filterShape(X, modeCut=10)
         
-    # end.record()
-    # torch.cuda.synchronize()
-    # print(f'correctAreaLength takes {start.elapsed_time(end)/1000} sec.')
-
     # Update simulation time
     time_ += prams['dt']
 
@@ -286,20 +225,8 @@ for step in tqdm(range(int(prams['T'] / prams['dt']))):
     print("*****************************************************************")
     print(f"Time: {step} step, out of Tf: {prams['T']}")
     print(f"GMRES took {iter_} matvecs, successful {not iflag}")
-    # print(f"Time step took {t_end:.4f} seconds")
     print("*****************************************************************")
 
     output = np.concatenate(([time_], X.cpu().numpy().T.flatten())).astype('float64')
     with open(fileName, 'ab') as fid:
         output.tofile(fid)
-
-
-    # np.save("BIEM_TG_N128_last.npy", np.concatenate((X.cpu().numpy(), sigma.cpu().numpy()), axis=0))
-
-    # Plot vesicles and walls
-    # plt.figure(1); plt.clf()
-    # plt.plot(Xwalls[0, :prams['Nbd']], Xwalls[1, :prams['Nbd']], 'k', linewidth=2)
-    # plt.plot(Xwalls[0, prams['Nbd']:], Xwalls[1, prams['Nbd']:], 'k', linewidth=2)
-    # plt.plot(X[0], X[1], 'r', linewidth=2)
-    # plt.axis('equal')
-    # plt.pause(0.1)
