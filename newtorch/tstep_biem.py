@@ -5,7 +5,7 @@ torch.set_default_dtype(torch.float32)
 from curve_batch_compile import Curve
 from capsules import capsules
 from poten import Poten
-from filter import interpft_vec, interpft
+from tools.filter import interpft_vec, interpft
 from biem_support import wrapper_allExactStokesSLTarget_compare2, naiveNearZoneInfo
 import cupy as cp
 if torch.cuda.is_available():
@@ -103,7 +103,7 @@ class TStepBiem:
         else:
             self.opWall = None
 
-                # precomputed inverse of block-diagonal preconditioner for tension solve
+        # precomputed inverse of block-diagonal preconditioner for tension solve
         self.bdiagTen = None  
         
         # precomputed inverse of block-diagonal preconditioner only for wall-wall interactions
@@ -216,13 +216,10 @@ class TStepBiem:
                 else:
                     _, self.NearW2V = self.walls.getZone(vesicle, 2)
         else:
-            # self.NearV2V = vesicle.getZone(None, 1)
             self.NearV2V = naiveNearZoneInfo(Xstore, interpft_vec(Xstore, op.Nup))
-            # self.NearV2V = naiveNearZoneInfo(Xstore, Xstore)
-            # self.NearV2V = None
             self.NearV2W = self.NearW2V = self.NearW2W = None
 
-        print("nearZone finished")
+        # print("nearZone finished")
         # Right-hand side components
         rhs1 = Xstore
         rhs2 = torch.zeros((N, nv), dtype=Xstore.dtype, device=Xstore.device)
@@ -249,7 +246,6 @@ class TStepBiem:
         # --- Repulsion ---
         if self.repulsion:
             if not self.confined:
-                # repulsion = vesicle.repulsionScheme(self.Xrep, self.repStrength, self.minDist, None, None, None)
                 repulsion = vesicle.repulsionForce(Xstore, self.repStrength, self.minDist)
             else:
                 repulsion = vesicle.repulsionScheme(self.Xrep, self.repStrength, self.minDist, self.walls, None, None)
@@ -279,7 +275,6 @@ class TStepBiem:
         # --- Stack RHS ---
         rhs = torch.cat([rhs1, rhs2], dim=0)
         rhs = torch.cat([rhs.T.reshape(-1), rhs3.T.reshape(-1)]) if rhs3 is not None else rhs.T.reshape(-1)
-
         rhs = torch.cat([rhs, torch.zeros(3*(nvbd - 1), dtype=rhs.dtype, device=rhs.device)]) if self.confined else rhs
 
         # --- Preconditioner ---
@@ -288,31 +283,6 @@ class TStepBiem:
             bdiagVes_LU = torch.zeros((3*N, 3*N, nv))
             bdiagVes_P = torch.zeros((3*N, nv), dtype=torch.int32)
 
-            # allmat = torch.zeros((3*N, 3*N, nv), dtype=Xstore.dtype, device=Xstore.device)
-            # for k in range(nv):
-            #     if self.viscCont[k] != 1:
-            #         mat = torch.cat([
-            #             torch.cat([
-            #                 torch.eye(2*N) - self.D[:, :, k] / alpha[k] +
-            #                 self.dt / alpha[k] * vesicle.kappa * self.Galpert[:, :, k] @ Ben[:, :, k] -
-            #                 self.dt / alpha[k] * self.Galpert[:, :, k] @ Ten[:, :, k],
-            #                 -self.dt / alpha[k] * self.Galpert[:, :, k] @ Ten[:, :, k]
-            #             ], dim=1),
-            #             torch.cat([Div[:, :, k], torch.zeros((N, N))], dim=1)
-            #         ])
-            #     else:
-            #         mat = torch.cat([
-            #             torch.cat([
-            #                 torch.eye(2*N) + \
-            #                 self.dt * vesicle.kappa * self.Galpert[:, :, k] @ Ben[:, :, k],
-            #                 -self.dt / alpha[k] * self.Galpert[:, :, k] @ Ten[:, :, k]
-            #             ], dim=1),
-            #             torch.cat([Div[:, :, k], torch.zeros((N, N))], dim=1)
-            #         ])
-            #     allmat[:, :, k] = mat
-            
-            # Assumptions:
-            # N: scalar, nv: number of vesicles
             I = torch.eye(2 * N).unsqueeze(-1).repeat(1, 1, nv)  # (2N, 2N, nv)
             Z = torch.zeros((N, N, nv))                        # (N, N, nv)
 
@@ -344,9 +314,6 @@ class TStepBiem:
             # Combine with bottom block
             mat_all = torch.cat([top, DivZ], dim=0)  # (3N, 3N, nv)
 
-            # print(f"batch op preconditioner: torch.max({torch.max(mat_all - allmat)})")
-            # print(f"batch op preconditioner: torch.min({torch.min(mat_all - allmat)})")
-            
             LU, P = torch.linalg.lu_factor(mat_all.permute(2,0,1))
             bdiagVes_LU = LU
             bdiagVes_P = P
@@ -359,18 +326,11 @@ class TStepBiem:
             RS = RSstore[:, 1:]
             initGMRES = torch.cat([initGMRES, etaStore.view(-1), RS.view(-1)])
 
-
-        global matvecs
-        matvecs = 0 
         gmres_func = lambda X: self.time_matvec(X, vesicle)
         cupy_lin_op = LinearOperator((initGMRES.shape[0], initGMRES.shape[0]), gmres_func)
         torch.cuda.empty_cache()
         
         counter = gmres_counter(disp=False)
-
-        # start = torch.cuda.Event(enable_timing=True)
-        # end = torch.cuda.Event(enable_timing=True)
-        # start.record()
 
         if self.usePreco:
             # print(f"gmres tol {self.gmresTol}")
@@ -382,36 +342,19 @@ class TStepBiem:
         else:
             Xn, info = gmres(cupy_lin_op, rhs, tol=self.gmresTol, maxiter=self.gmresMaxIter)
 
-        # Xn = self.time_matvec(initGMRES, vesicle)  # debug only; Placeholder for actual GMRES call
-        # info = 10
-        
-        # end.record()
-        # torch.cuda.synchronize()
-        # print(f'gmres takes {start.elapsed_time(end)/1000} sec.')
-        # torch.cuda.empty_cache()
-
         print(f"gmres takes {counter.niter} iterations")
 
         iflag = info != 0
-        iter = matvecs
+        iter = counter.niter
         Xn = torch.as_tensor(Xn, dtype=torch.float64)
 
         # --- Unstack results ---
-        
-        # X = torch.zeros((2*N, nv), dtype=Xn.dtype)
-        # sigma = torch.zeros((N, nv), dtype=Xn.dtype)
         eta = torch.zeros((2*Nbd, nvbd), dtype=Xn.dtype) if self.confined else None
         RS = torch.zeros((3, nvbd), dtype=Xn.dtype) if self.confined else None
-
-        # for k in range(nv):
-        #     X[:, k] = Xn[(3*k)*N : (3*k+2)*N]
-        #     sigma[:, k] = Xn[(3*k+2)*N : (3*k+3)*N]
         
         Xn_reshaped = Xn.view(nv, 3, N)  # [nv, 3, N]
         X_ = Xn_reshaped[:, 0:2, :].reshape(nv, 2*N).transpose(0, 1).clone()
         sigma_ = Xn_reshaped[:, 2, :].T.clone()  
-        # if not torch.allclose(X_, X) or not torch.allclose(sigma_, sigma):
-        #     raise ValueError("Mismatch in reshaped X or sigma")
 
 
         if self.confined:
@@ -438,9 +381,6 @@ class TStepBiem:
             Xn = torch.from_numpy(Xn).double()  # Convert to tensor
         elif isinstance(Xn, cp.ndarray):
             Xn = torch.as_tensor(Xn).double()
-        
-        # if torch.any(torch.isnan(Xn)) or torch.any(torch.isinf(Xn)):
-        #     raise ValueError("NaN or Inf in the Xn")
 
         walls = self.Xwalls
         op = self.op
@@ -467,9 +407,6 @@ class TStepBiem:
         Xn_reshaped = Xn.view(nv, 3, N)  # [nv, 3, N]
         Xm = Xn_reshaped[:, 0:2, :].reshape(nv, 2*N).transpose(0, 1).clone()
         sigmaM = Xn_reshaped[:, 2, :].T.clone()  
-
-        # if not torch.allclose(Xm_, Xm) or not torch.allclose(sigmaM_, sigmaM):
-        #     raise ValueError("Mismatch in reshaped Xm or sigmaM")
 
         if self.confined:
             eta = Xn[3 * nv * N:]
@@ -534,17 +471,12 @@ class TStepBiem:
             if self.matFreeWalls:
                 valLets = self.letsIntegrals(otlets, etaM)
 
-        
-        # print(torch.max(self.Galpert))
-        # print(torch.max(Gf))
-        # print(torch.max(valPos))
         valPos -= self.dt * Gf / alpha
         if DXm is not None:
             valPos -= DXm / alpha 
         
-        # print(torch.max(valPos))
         valPos -= self.dt * Fslp / alpha
-        # print(torch.max(valPos))
+        
         if Fdlp is not None:
             valPos -= Fdlp / alpha
         if self.confined:
@@ -575,27 +507,11 @@ class TStepBiem:
         valTen = vesicle.surfaceDiv(Xm)
         valPos += Xm
 
-        # if torch.any(torch.isnan(valTen)) or torch.any(torch.isinf(valTen)):
-        #     raise ValueError("NaN or Inf in the valTen")
-        # if torch.any(torch.isnan(valPos)) or torch.any(torch.isinf(valPos)):
-        #     raise ValueError("NaN or Inf in the valPos")
-        
-
-        # import pdb; pdb.set_trace()
-        
-        # val = torch.zeros((3 * N * nv,), dtype=dtype, device=device)
-        # for k in range(nv):
-        #     val[3 * N * k:3 * N * (k + 1)] = torch.cat([valPos[:, k], valTen[:, k]])
-        torch.cuda.empty_cache()
-
         val_reshaped = torch.cat([
             valPos.reshape(2, N, nv),
             valTen.reshape(1, N, nv)
         ], dim=0).reshape(3 * N, nv)
         val = val_reshaped.permute(1, 0).reshape(-1)
-
-        # if not torch.allclose(val_, val):
-        #     raise ValueError("Mismatch in reshaped val_ and val")
 
         if self.confined and torch.any(vesicle.viscCont != 1):
             valWalls *= self.dt
@@ -603,8 +519,6 @@ class TStepBiem:
         if self.confined:
             val = torch.cat([val, valWalls.view(-1), valLets])
 
-        # if torch.any(torch.isnan(val)) or torch.any(torch.isinf(val)):
-        #     raise ValueError("NaN or Inf in the result")
         return cp.asarray(val) if torch.cuda.is_available() else np.asarray(val)
 
 
@@ -673,32 +587,10 @@ class TStepBiem:
 
         # Extract vesicle part
         zves = z[:3*N*nv]
-        # valVes = torch.zeros(zves.shape[0], 1)
-
-        # Apply block-diagonal inverse to vesicle part
-        # for k in range(nv):
-        #     idx_start = k * 3 * N
-        #     idx_end = (k + 1) * 3 * N
-        #     z_k = zves[idx_start:idx_end]
-
-        #     # Solve U_k \ (L_k \ z_k)
-        #     # Lk = o.bdiagVes['L'][:, :, k]
-        #     # Uk = o.bdiagVes['U'][:, :, k]
-        #     # y = torch.linalg.solve(Lk, z_k)
-        #     # valVes[idx_start:idx_end] = torch.linalg.solve(Uk, y)
-        #     valVes[idx_start:idx_end] = torch.linalg.lu_solve(o.bdiagVes['LU'][:, :, k], o.bdiagVes['pivots'][:, k], z_k.unsqueeze(-1))
-
-        # Reshape zves from (3*N*nv,) to (3*N, nv, 1)
         zves_batched = zves.view(nv, 3*N).unsqueeze(-1)
         # Use batched LU solve: LU is (3N, 3N, nv), pivots is (3N, nv)
         valVes_batched = torch.linalg.lu_solve(o.bdiagVes['LU'], o.bdiagVes['pivots'], zves_batched)
         valVes = valVes_batched.squeeze(-1).reshape(-1)
-
-        # valVes = valVes.squeeze() 
-
-        # if not torch.allclose(valVes_, valVes):
-            # print(f"valVes_ and valVes in preconditionerBD {torch.norm(valVes - valVes_) / torch.norm(valVes)}")
-            # raise ValueError("Mismatch in reshaped valVes_ and valVes")
 
         # Wall part
         if o.confined:
@@ -707,9 +599,8 @@ class TStepBiem:
 
         # Combine and return
         val = torch.cat([valVes, valWalls], dim=0) if o.confined else valVes
-        # if torch.any(torch.isnan(val)) or torch.any(torch.isinf(val)):
-        #     raise ValueError("NaN or Inf in the result")
         return cp.asarray(val) if torch.cuda.is_available() else np.asarray(val)
+
 
     def wallsPrecond(o):
         """
@@ -950,45 +841,3 @@ class TStepBiem:
         # Scale the velocity
         vInf *= speed
         return vInf
-
-
-# X = torch.tensor(
-#     [[0.1818, 0.1459, 0.1868, 0.0616],
-#         [0.0265, 0.3467, 0.8279, 0.0041],
-#         [0.7317, 0.4133, 0.6540, 0.7822],
-#         [0.9248, 0.4949, 0.9423, 0.3238],
-#         [0.8524, 0.9184, 0.5882, 0.7911],
-#         [0.1531, 0.1649, 0.0686, 0.0024],
-#         [0.8971, 0.7035, 0.2109, 0.0119],
-#         [0.7806, 0.2802, 0.8062, 0.8937],
-#         [0.4480, 0.4619, 0.1555, 0.6016],
-#         [0.4711, 0.6571, 0.3333, 0.1418],
-#         [0.2738, 0.2125, 0.3279, 0.3178],
-#         [0.5723, 0.1634, 0.6184, 0.7612],
-#         [0.9286, 0.9554, 0.6151, 0.0986],
-#         [0.9285, 0.0014, 0.3947, 0.3728],
-#         [0.6724, 0.1632, 0.1417, 0.1725],
-#         [0.3674, 0.8188, 0.0189, 0.0784]]
-# )
-# f = torch.tensor(
-#     [[0.2150, 0.4940, 0.8152, 0.3232],
-#         [0.8916, 0.8903, 0.3387, 0.1970],
-#         [0.7910, 0.3858, 0.9156, 0.3808],
-#         [0.3705, 0.7803, 0.8281, 0.1586],
-#         [0.1098, 0.2964, 0.8263, 0.9500],
-#         [0.6343, 0.5572, 0.4944, 0.0960],
-#         [0.5035, 0.3945, 0.5819, 0.3653],
-#         [0.3040, 0.6726, 0.3060, 0.0929],
-#         [0.4984, 0.5615, 0.6630, 0.7215],
-#         [0.1431, 0.1372, 0.7046, 0.5475],
-#         [0.9208, 0.7720, 0.8337, 0.2339],
-#         [0.4214, 0.5023, 0.4246, 0.4220],
-#         [0.5682, 0.5950, 0.4241, 0.6812],
-#         [0.9907, 0.5678, 0.4912, 0.5115],
-#         [0.4176, 0.5109, 0.2031, 0.4541],
-#         [0.0429, 0.1609, 0.2672, 0.1612]]
-# )
-# ves = capsules(X, None, None, torch.tensor([1.]), torch.tensor([1.3]))
-# op = Poten(N//2)
-# dl = op.exactStokesDL(ves, f, X, [2, 3])
-# print(dl)
