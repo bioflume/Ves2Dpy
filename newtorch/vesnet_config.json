@@ -1,0 +1,13 @@
+{
+  "filename": "linshi",
+  "resolution": 32,
+  "bgFlow": "vortex",
+  "speed": 400,
+  "chanWidth": 2.5,
+  "vortexSize": 2.5,
+  "nlayers": 5,
+  "rbf_upsample": 4,
+  "use_repulsion": false,
+  "repulsion_strength": 1e4,
+  "eta": 1/32
+}
