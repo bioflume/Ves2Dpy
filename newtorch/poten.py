@@ -411,7 +411,6 @@ class Poten:
         stokesDLPtar = torch.zeros((2 * Ntar, ncol), dtype=torch.float32, device=vesicle.X.device)
 
         # Compute density function with jacobian term and viscosity contrast scaling
-        # 可能需要改成对角矩阵
         den = (f * torch.cat((vesicle.sa, vesicle.sa), dim=0) * (2 * torch.pi / vesicle.N)) @ torch.eye(vesicle.nv) * (1 - vesicle.viscCont)
 
         oc = Curve()
@@ -601,45 +600,6 @@ class Poten:
 
 
 
-    # def hh()
-    #     for k1 in range(nvSou):
-    #         # if tEqualS:
-    #         K = [k for k in range(nvTar) if k != k1]
-    #         # else:
-    #         #     K = range(nvTar)
-                
-
-    #         for k2 in K: # in nvTar
-    #             # set of points on vesicle k2 close to vesicle k1
-    #             id1, id2 = NearV2V[3]
-    #             J = id1[(Ntar * k2 <= id1) & (id1 < Ntar * (k2+1)) & (id2 == k1)] % Ntar
-    #             if len(J) == 0:
-    #                 continue  # Skip if no near-zone points
-
-    #             # indcp = icp[k1][J, k2] # closest point on vesicle k1 to each point on vesicle k2 that is close to vesicle k1
-    #             dist_closest, idx_closest = NearV2V[0][k1, k2, J], NearV2V[1][k1, k2, J]
-    #             # index of points to the left and right of the closest point
-    #             pn = ((idx_closest[:, None] - p + torch.arange(interpOrder)) % Nsou).long() 
-
-    #             vel = torch.zeros((2 * Ntar, nvTar, nvSou), dtype=torch.float32, device=device)
-    #             v = self.interpMat @ vself[pn, k1].T
-    #             vel[J, k2, k1]  = v[-1, :]
-    #             v = self.interpMat @ vself[pn + Nsou, k1].T
-    #             vel[J + Ntar, k2, k1]  = v[-1, :]
-
-                
-    #             # Compute Lagrange interpolation points
-    #             nx = (Xtar[J, k2] - Xsou[idx_closest, k1]) / dist_closest
-    #             ny = (Xtar[J + Ntar, k2] - Xsou[idx_closest + Nsou, k1]) / dist_closest
-
-    #              XLag_x = Xsou[idx_closest, k1].unsqueeze(1) + beta * h * nx.unsqueeze(1) * torch.arange(1, interpOrder)
-    #             XLag_y = Xsou[idx_closest + Nsou, k1].unsqueeze(1) + beta * h * ny.unsqueeze(1) * torch.arange(1, interpOrder)
-
-    #             XLag = torch.cat((XLag_x, XLag_y), dim=0)
-
-    #             lagrangePts = exactStokesSL(vesicleUp, fup, XLag, [k1]) # may need optimization
-
-
     def nearSingInt_rbf(self, vesicleSou, f, selfMat, NearV2V, kernelDirect, vesicleTar, tEqualS):
         """
         Computes a layer potential due to `f` at all points in `vesicleTar.X`.
@@ -695,12 +655,6 @@ class Poten:
         else:
             farField = torch.zeros((2 * Ntar, nvTar), dtype=torch.float32, device=device)
 
-        # if len(NearV2V[2][0]) == 0 and len(NearV2V[2][1]) == 0:
-        
-        # start = torch.cuda.Event(enable_timing=True)
-        # end = torch.cuda.Event(enable_timing=True)
-        # start.record()
-
         upsample = -1
         if Nsou == 32:
             if upsample <=1 :
@@ -745,26 +699,7 @@ class Poten:
                         torch.repeat_interleave(Xup[Nup:, :, None], nlayers-1, dim=-1) + dy]), (0,2,1)) # (2*N, nlayers-1, nv)
 
         velx, vely, xlayers, ylayers = exactStokesSL_onlyself(vesicleUp.X, vesicleUp.sa, fup, Nup, Xup, vself, tracers)
-        # velx_, vely_, xlayers_, ylayers_ = exactStokesSL_onlyself_old(vesicleUp, fup, Xsou, vself, nlayers, upsample)
-        # np.save("vel_layers.npy", {"velx": velx.cpu().numpy(), "vely": vely.cpu().numpy(), "xlayers": xlayers.cpu().numpy(), "ylayers": ylayers.cpu().numpy()})
-
-
-        # if not torch.allclose(velx, velx_):
-        #     print("velx not equal")
-        #     print(torch.max(torch.abs(velx - velx_)))
-
-        # if not torch.allclose(vely, vely_):
-        #     print("vely not equal")
-        #     print(torch.max(torch.abs(vely - vely_)))
         
-        # if not torch.allclose(xlayers, xlayers_):
-        #     print("xlayers not equal")
-        #     print(torch.max(torch.abs(xlayers - xlayers_)))
-        
-        # if not torch.allclose(ylayers, ylayers_):
-        #     print("ylayers not equal")
-        #     print(torch.max(torch.abs(ylayers - ylayers_)))
-
 
         all_X = torch.concat((xlayers.reshape(-1,1,nvSou), ylayers.reshape(-1,1,nvSou)), dim=1) # (nlayers * N, 2, nv), 2 for x and y
         all_X = all_X /const
@@ -772,16 +707,9 @@ class Poten:
         matrices += (torch.eye(all_X.shape[0]).unsqueeze(-1) * 1e-6).expand(-1,-1,nvSou) # (nlayers*N, nlayers*N, nv)
         L = torch.linalg.cholesky(matrices.permute(2, 0, 1))
         
-        # old_farField = farField.clone()
         self.nearFieldCorrectionUP_SOLVE(vesicleTar, upsample, NearV2V[2], L, farField, velx, vely, xlayers, ylayers, nlayers=nlayers)
 
-        # end.record()
-        # torch.cuda.synchronize()
-        # print(f'near correction takes {start.elapsed_time(end)/1000} sec.')
 
-
-        # print(old_farField - farField)
-        # return farField, farField - old_farField
         return farField
 
 
@@ -816,60 +744,6 @@ class Poten:
         coeffs = torch.linalg.solve_triangular(L.permute(0, 2, 1), y, upper=True)
             
 
-        # tStart = time.time()
-        # for k in range(nv):
-        #     rows_with_true = torch.any(nbrs_mask[:, k*Nup : (k+1)*Nup], dim=1)
-        #     if not torch.any(rows_with_true):
-        #         continue
-        #     ids_in = torch.arange(N*nv)[rows_with_true] # which ves points are in k's near zone
-            
-        #     points_query = all_points[ids_in] # and their coords
-        #     ves_id = torch.IntTensor([k])
-
-        #     r2 = torch.sum((points_query[:, None]/const * N - all_X[None, ..., ves_id].squeeze(-1))**2, dim=-1)
-        #     matrix = torch.exp(- 1 * r2) 
-        
-        #     rbf_vel = matrix @ coeffs[k]
-
-        #     correction[ids_in, 0] += rbf_vel[:, 0]
-        #     correction[ids_in, 1] += rbf_vel[:, 1]
-
-        # tEnd = time.time()
-        # print(f'x1 nearFieldCorrection for loop {tEnd - tStart} sec.')
-
-
-        # nbrs_mask_reshaped = nbrs_mask.reshape(nv*N, nv, Nup)
-        # rows_with_true = torch.any(nbrs_mask_reshaped, dim=-1).unsqueeze(1) # (N*nv, 1, nv)
- 
-        # r = torch.norm(all_points.unsqueeze(1).unsqueeze(-1)/const * N - all_X[None, ...], dim=-2) # (N*nv, N*nlayers, nv)
-        # r.masked_fill_(~rows_with_true, torch.inf)
-        # matrix = torch.exp(- 1 * r**2) 
-
-        # rr = torch.full((N*nv, N*5, nv), float('inf'))
-        # id1, id2, id3 = torch.where(rows_with_true.expand(-1, N*5, -1))
-        # rr[id1, id2, id3] = torch.norm(all_points[id1]/const*N - all_X[id2, :, id3], dim=-1)
-        # matrix = torch.exp(- 1 * rr**2) 
-
-        # matrix = torch.zeros((N*nv, N*5, nv), dtype=torch.float32, device=far_field.device)
-        # id1, id2, id3 = torch.where(rows_with_true.expand(-1, N*5, -1))
-        # matrix[id1, id2, id3] = torch.exp(- torch.norm(all_points[id1]/const*N - all_X[id2, :, id3], dim=-1)**2)
-        
-        # if not torch.allclose(r, rr):
-        #     raise "r and rr are not the same"
-
-        # sp_matrix = matrix.reshape(N*nv, N*5 * nv).to_sparse()
-        # c = torch.sparse.mm(sp_matrix, coeffs.permute(1,0,2).reshape(nv * N*5, 2))
-        # correction = torch.einsum("Nnv, vnc -> Nc", matrix, coeffs)  #matrix @ coeffs
-        # correction_ = matrix.reshape(N*nv, N*5 * nv) @ coeffs.permute(1,0,2).reshape(nv * N*5, 2)
-
-        # id1, id2 = torch.where(rows_with_true.expand(-1, N*5, -1).reshape(N*nv, -1))
-        # sp_matrix = torch.sparse_coo_tensor(torch.vstack((id1, id2)), 
-        #                 torch.exp(-torch.norm(all_points[id1]/const*N - all_X.permute(0,2,1).reshape(-1, 2)[id2, :], dim=-1)**2),
-        #                 size=(N*nv, N*5 * nv))  
-        # correction = torch.sparse.mm(sp_matrix, coeffs.permute(1,0,2).reshape(nv * N*5, 2))
-
-
-        # id1_, id2_ = torch.where(rows_with_true.squeeze())
         id1_, id2_ = info
         if upsample <= 1:
             id2_ = id2_[:, None] + torch.arange(0, N*nlayers*nv, nv).to(id2_.device)
@@ -892,8 +766,6 @@ class Poten:
         correction = correction.view(nv, N, 2).permute(2, 1, 0).reshape(2 * N, nv)
         far_field += correction
         return 
-
-
 
 
     def singQuadStokesSLmatrix(self, N):
