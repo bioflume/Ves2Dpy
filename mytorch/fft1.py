@@ -1,9 +1,9 @@
 import torch
 import numpy as np
 torch.set_default_dtype(torch.float32)
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import scipy
-from scipy.signal import resample
+# from scipy.signal import resample
 
 class fft1:
     # class implements fft transformations. This includes computing
@@ -42,7 +42,7 @@ class fft1:
         # The points y are assumed to be in the 0-2*pi range.
 
         A = torch.zeros((len(y), N), dtype=torch.float32)
-        modes = torch.concatenate((torch.arange(0, N / 2), [0], torch.arange(-N / 2 + 1, 0)))
+        modes = torch.concatenate((torch.arange(0, N / 2), torch.tensor([0.]), torch.arange(-N / 2 + 1, 0)))
         f = torch.zeros(N, dtype=torch.float32)
 
         for j in range(N):
@@ -53,6 +53,40 @@ class fft1:
             f[j] = 0
         A = torch.real(A)
         return A
+    
+
+    def sinterpS_(self, N, y):
+        """
+        Constructs the interpolation matrix A that maps a function defined periodically 
+        at N equispaced points to function values at points y.
+        
+        Parameters:
+            N (int): Number of equispaced points.
+            y (Tensor): Points in the range [0, 2*pi] where interpolation is needed.
+        
+        Returns:
+            A (Tensor): Interpolation matrix of shape (len(y), N).
+        """
+        len_y = len(y)
+
+        # Construct frequency modes
+        modes = torch.cat((torch.arange(0, N // 2), torch.tensor([0.]), torch.arange(-N // 2 + 1, 0))).to(y.dtype)
+
+        # Identity matrix as input functions (each column is an impulse function)
+        f = torch.eye(N, dtype=torch.cfloat)  # (N, N)
+        
+
+        # Compute FFT of identity matrix (each column corresponds to an impulse response)
+        fhat = torch.fft.fft(f, dim=0) / N  # (N, N)
+
+        # Compute exponential term (outer product between y and frequency modes)
+        exp_matrix = torch.exp(1j * torch.outer(y, modes)).cfloat()  # (len_y, N)
+
+        # Compute interpolation matrix using batched matrix multiplication
+        A = torch.real(exp_matrix @ fhat)  # (len_y, N)
+
+        return A
+
 
     def test(self):
         print('testing differentiation test:')
@@ -149,19 +183,17 @@ class fft1:
 
 
     @staticmethod
-    def modes(N, nv):
+    def modes(N, nv, device):
         # IK = modes(N) builds the order of the Fourier modes required for using
         # fft and ifft to do spectral differentiation
 
-        IK = 1j * torch.concatenate((torch.arange(0, N / 2), torch.tensor([0]), torch.arange(-N / 2 + 1, 0))) #.double()
-        IK = IK[:,None]
-        if nv == 2:
-            IK = torch.column_stack((IK, IK))
-        elif nv == 3:
-            IK = torch.column_stack((IK, IK, IK))
-        elif nv > 3:
-            IK = torch.tile(IK, (1, nv))
-        return IK
+        IK = 1j * torch.concatenate((torch.arange(0, N / 2, device=device), torch.tensor([0], device=device), torch.arange(-N / 2 + 1, 0, device=device))).to(device) #.double()
+        IK = IK[:,None].cfloat()
+        IK1 = IK.expand(-1, nv)
+        # IK2 = torch.tile(IK, (1, nv))
+        # if not torch.allclose(IK1, IK2):
+        #     raise "IK is not the same as IK_"
+        return IK1
 
     @staticmethod
     def fourierDiff(N):
@@ -169,29 +201,34 @@ class fft1:
         Creates the Fourier differentiation matrix.
         """
         D1 = fft1.fourierInt(N)[0]
-        modes = torch.arange(-N//2, N//2) #.double()
-        D1 = torch.conj(D1.T) @ torch.diag(1j * N * modes) @ D1
+        modes = torch.arange(-N//2, N//2, dtype = torch.int32) #.double()
+        D1 = torch.conj(D1.T) @ torch.diag(1.j * N * modes).cfloat() @ D1
 
         return D1
 
-    # @staticmethod
-    # def fourierRandP(N, Nup):
-    #     # [R,P] = fourierRandP(N,Nup) computes the Fourier restriction and
-    #     # prolongation operators so that functions can be interpolated from N
-    #     # points to Nup points (prolongation) and from Nup points to N points
-    #     # (restriction)
+    @staticmethod
+    def fourierRandP(N, Nup):
+        # [R,P] = fourierRandP(N,Nup) computes the Fourier restriction and
+        # prolongation operators so that functions can be interpolated from N
+        # points to Nup points (prolongation) and from Nup points to N points
+        # (restriction)
 
-    #     R = torch.zeros((N, Nup), dtype=torch.float32)
-    #     P = torch.zeros((Nup, N), dtype=torch.float32)
+        R = torch.zeros((N, Nup), dtype=torch.float32)
+        P = torch.zeros((Nup, N), dtype=torch.float32)
 
-    #     FF1, FFI1 = fft1.fourierInt(N)
-    #     FF2, FFI2 = fft1.fourierInt(Nup)
+        FF1, FFI1 = fft1.fourierInt(N)
+        FF2, FFI2 = fft1.fourierInt(Nup)
 
-    #     R = torch.matmul(FFI1, torch.hstack((torch.zeros((N, (Nup - N) // 2)), torch.eye(N), torch.zeros((N, (Nup - N) // 2))))*1j) \
-    #         .matmul(FF2)
-    #     R = torch.real(R)
-    #     P = R.T * Nup / N
-    #     return R, P
+        # R = torch.matmul(FFI1, torch.hstack((torch.zeros((N, (Nup - N) // 2)), torch.eye(N), torch.zeros((N, (Nup - N) // 2))))*1j) \
+        #     .matmul(FF2)
+        R = torch.matmul(FFI1, torch.hstack((torch.zeros((N, (Nup - N) // 2), dtype=torch.complex64),
+                                            torch.eye(N, dtype=torch.complex64),
+                                             torch.zeros((N, (Nup - N) // 2), dtype=torch.complex64)))) \
+            .matmul(FF2)
+        
+        R = torch.real(R)
+        P = R.T * Nup / N
+        return R, P
 
     @staticmethod
     def fourierInt(N):
@@ -201,11 +238,20 @@ class fft1:
         # the function values (FFI)
 
         theta = torch.arange(N).reshape(-1) * 2 * torch.pi / N
-        modes = torch.concatenate((torch.tensor([-N / 2]), torch.arange(-N / 2 + 1, N / 2))) #.double()
-        FF = torch.exp(-1j * torch.outer(modes, theta)) / N
+        theta = theta.to(torch.get_default_dtype())
+        modes = torch.concatenate((torch.tensor([-N / 2]), torch.arange(-N / 2 + 1, N / 2))).to(torch.get_default_dtype())
+        FF = torch.exp(-1j * torch.outer(modes, theta)).cfloat() / N
 
         if True:  # nargout > 1
-            FFI = torch.exp(1j * torch.outer(theta, modes))
+            FFI = torch.exp(1j * torch.outer(theta, modes)).cfloat()
         else:
             FFI = None
         return FF, FFI
+
+# f = fft1(16)
+# y = torch.rand(16)
+# A1 = f.sinterpS(16, y)
+# A2 = f.sinterpS_(16, y)
+
+# print(torch.max(A1 - A2))
+# print(torch.min(A1 - A2))

@@ -1,7 +1,7 @@
 import torch
 torch.set_default_dtype(torch.float32)
-from scipy.interpolate import interp1d
-from curve_batch import Curve
+# from scipy.interpolate import interp1d
+from curve_batch_compile import Curve
 from fft1 import fft1
 
 class capsules:
@@ -49,7 +49,7 @@ class capsules:
         # ordering of the fourier modes.  It is faster to compute once here and
         # pass it around to the fft differentitation routine
         f = fft1(self.N)
-        self.IK = f.modes(self.N, self.nv).to(self.X.device)
+        self.IK = f.modes(self.N, self.nv, X.device)
 
     def tracJump(self, f, sigma):
         """
@@ -82,7 +82,6 @@ class capsules:
     def surfaceDiv(self, f):
         """
         Compute the surface divergence of f with respect to the vesicle.
-        f has size N x nv
         """
         oc = Curve()
         fx, fy = oc.getXY(f)
@@ -96,41 +95,118 @@ class capsules:
         % surface divergence all with respect to arclength.  Everything in this
         % routine is matrix free at the expense of having repmat calls
         """
-        Ben = torch.zeros((2 * self.N, 2 * self.N, self.nv))
-        Ten = torch.zeros((2 * self.N, self.N, self.nv))
-        Div = torch.zeros((self.N, 2 * self.N, self.nv))
+        N, nv = self.N, self.nv
+        # Ben = torch.zeros((2 * self.N, 2 * self.N, self.nv))
+        # Ten = torch.zeros((2 * self.N, self.N, self.nv))
+        # Div = torch.zeros((self.N, 2 * self.N, self.nv))
 
         f = fft1(self.N)
         D1 = f.fourierDiff(self.N)
+        D1 = D1.to(self.X.device)
 
-        for k in range(self.nv):
-            # compute single arclength derivative matrix
+        # for k in range(self.nv):
+        #     # compute single arclength derivative matrix
             
-            isa = self.isa[:, k]
-            arcDeriv = isa[:, torch.newdim] * D1
-            # This line is equivalent to repmat(o.isa(:,k),1,o.N).*D1 but much
-            # faster.
+        #     isa = self.isa[:, k]
+        #     arcDeriv = isa[:, None] * D1
 
-            D4 = torch.dot(arcDeriv, arcDeriv)
-            D4 = torch.dot(D4, D4)
-            Ben[:, :, k] = torch.vstack([torch.hstack([torch.real(D4), torch.zeros((self.N, self.N))]),
-                                       torch.hstack([torch.zeros((self.N, self.N)), torch.real(D4)])])
+        #     D4 = (arcDeriv @ arcDeriv)
+        #     D4 = D4 @ D4
+        #     Ben[:, :, k] = torch.vstack([torch.hstack([torch.real(D4), torch.zeros((self.N, self.N), device=self.X.device)]),
+        #                                torch.hstack([torch.zeros((self.N, self.N), device=self.X.device), torch.real(D4)])])
             
-            Ten[:, :, k] = torch.vstack([torch.dot(torch.real(arcDeriv), torch.diag(self.xt[:self.N, k])),
-                                       torch.dot(torch.real(arcDeriv), torch.diag(self.xt[self.N:, k]))])
+        #     Ten[:, :, k] = torch.vstack([torch.matmul(torch.real(arcDeriv), torch.diag(self.xt[:self.N, k])),
+        #                                torch.matmul(torch.real(arcDeriv), torch.diag(self.xt[self.N:, k]))])
             
-            Div[:, :, k] = torch.hstack([torch.dot(torch.diag(self.xt[:self.N, k]), torch.real(arcDeriv)),
-                                      torch.dot(torch.diag(self.xt[self.N:, k]), torch.real(arcDeriv))])
+        #     Div[:, :, k] = torch.hstack([torch.matmul(torch.diag(self.xt[:self.N, k]), torch.real(arcDeriv)),
+        #                               torch.matmul(torch.diag(self.xt[self.N:, k]), torch.real(arcDeriv))])
             
-        Ben = torch.real(Ben)
-        Ten = torch.real(Ten)
-        Div = torch.real(Div)
+
+        device = self.X.device
+
+        isa_ = self.isa  # shape: (N, nv)
+        arcDeriv_ = isa_.unsqueeze(1) * D1.unsqueeze(-1) # shape: (N, N, nv)
+        arcDeriv_ = arcDeriv_.permute(2, 0, 1)   # shape: (nv, N, N)
+        arcDeriv_real = torch.real(arcDeriv_)  # shape: (nv, N, N)
+
+        # Compute D4 = (arcDeriv @ arcDeriv)^2
+        D2 = arcDeriv_ @ arcDeriv_  # shape: (nv, N, N)
+        D4_real = torch.real(D2 @ D2)  # still (nv, N, N)
+
+        # Create Ben (2N x 2N x nv)
+        zero_NN = torch.zeros((nv, N, N), device=device)
+        top = torch.cat([D4_real, zero_NN], dim=2)  # (nv, N, 2N)
+        bot = torch.cat([zero_NN, D4_real], dim=2)  # (nv, N, 2N)
+        Ben_ = torch.cat([top, bot], dim=1).permute(1, 2, 0)  # (2N, 2N, nv)
+
+        # Create Ten (2N x N x nv)
+        xt_top = self.xt[:N, :]  # (N, nv)
+        xt_bot = self.xt[N:, :]  # (N, nv)
+
+        Ten_top = torch.matmul(arcDeriv_real, torch.diag_embed(xt_top.T))  # (nv, N, N)
+        Ten_bot = torch.matmul(arcDeriv_real, torch.diag_embed(xt_bot.T))  # (nv, N, N)
+        Ten_ = torch.cat([Ten_top, Ten_bot], dim=1).permute(1, 2, 0)  # (2N, N, nv)
+
+        # Create Div (N x 2N x nv)
+        Div_left = torch.matmul(torch.diag_embed(xt_top.T), arcDeriv_real)  # (nv, N, N)
+        Div_right = torch.matmul(torch.diag_embed(xt_bot.T), arcDeriv_real)  # (nv, N, N)
+        Div_ = torch.cat([Div_left, Div_right], dim=2).permute(1, 2, 0)  # (N, 2N, nv)
+
+        # print("computeDerivs checking...")
+        # if not torch.allclose(Ben, Ben_, rtol=5e-5):
+        #     print(torch.max((Ben - Ben_)/Ben))
+        #     print(torch.min((Ben - Ben_)/Ben))
+        #     raise "Ben mismatch!"
+             
+        # if not torch.allclose(Ten, Ten_, rtol=4e-5):
+        #     raise "Ten mismatch!"
+              
+        # if not torch.allclose(Div, Div_, rtol=4e-5):
+        #     raise "Div mismatch!"
+    
+        # # Assume self.isa is of shape (N, nv), D1 is (N, N)
+        # isa_expanded = self.isa.unsqueeze(1)  # Shape: (N, 1, nv)
+        # arcDeriv = isa_expanded * D1.unsqueeze(-1)  # Shape: (N, N, nv)
+
+        # # Compute D4 efficiently (avoiding explicit loops)
+        # D4 = arcDeriv @ arcDeriv  # Shape: (N, N, nv)
+        # D4 = D4 @ D4  # Shape: (N, N, nv)
+
+        # # Construct Ben (batching operations)
+        # zero_block = torch.zeros((self.N, self.N, self.nv), device=self.X.device)
+        # Ben_ = torch.cat([
+        #     torch.cat([D4.real, zero_block], dim=1),  
+        #     torch.cat([zero_block, D4.real], dim=1)
+        # ], dim=0)  # Shape: (2N, 2N, nv)
+
+        # # Construct Ten
+        # arcDeriv_real = arcDeriv.real  # Shape: (N, N, nv)
+        # xt_top = self.xt[:self.N, :].unsqueeze(1)  # Shape: (N, 1, nv)
+        # xt_bottom = self.xt[self.N:, :].unsqueeze(1)  # Shape: (N, 1, nv)
+
+        # Ten_ = torch.cat([
+        #     torch.matmul(arcDeriv_real, xt_top.diagonal(dim1=0, dim2=1)),  
+        #     torch.matmul(arcDeriv_real, xt_bottom.diagonal(dim1=0, dim2=1))
+        # ], dim=0)  # Shape: (2N, N, nv)
+
+        # # Construct Div
+        # Div_ = torch.cat([
+        #     torch.matmul(xt_top.diagonal(dim1=0, dim2=1), arcDeriv_real),  
+        #     torch.matmul(xt_bottom.diagonal(dim1=0, dim2=1), arcDeriv_real)
+        # ], dim=1)  # Shape: (N, 2N, nv)
+
+        
+        # print(torch.allclose(Ben, Ben_))
+            
+        Ben = torch.real(Ben_)
+        Ten = torch.real(Ten_)
+        Div = torch.real(Div_)
         # Imaginary part should be 0 since we are preforming a real operation
 
         return Ben, Ten, Div
 
     
-    def repulsionForce(self, X, W):
+    def repulsionForce(self, X, W, eta):
         """
         repulsion_force(o, X, W) computes the artificial repulsion between vesicles.
         W is the repulsion strength -- depends on the length and velocity scale
@@ -151,7 +227,7 @@ class capsules:
         dist_y = X[N:, :].unsqueeze(1).unsqueeze(3) - X[N:, :].unsqueeze(0).unsqueeze(2)  # Shape: (N, N, nv, nv)
 
         # Compute the pairwise distances
-        dist = torch.sqrt(dist_x**2 + dist_y**2 + 1e-12)
+        dist = torch.sqrt(dist_x**2 + dist_y**2 + 1e-10)
 
         # Mask out self-interactions
         mask = torch.eye(nv, dtype=torch.bool, device=dist.device).unsqueeze(0).unsqueeze(0)  # Shape: (1, 1, nv, nv)
@@ -159,7 +235,7 @@ class capsules:
 
         # Compute the maximum number of layers (L) for each distance
         # eta = 0.5 * VesicleLength/Number of Points
-        eta = 0.5 / N
+        # eta = 1 / N
         L = torch.floor(eta / dist)
 
         # Compute stiffness values (dF)
