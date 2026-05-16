@@ -19,6 +19,7 @@ from torch.profiler import profile, record_function, ProfilerActivity
 # from cupyx.scipy.interpolate import RBFInterpolator as scipyinterp_gpu
 from model_zoo_N32.get_network_torch_N32_compile import RelaxNetwork, TenSelfNetwork, MergedAdvNetwork, MergedTenAdvNetwork, MergedNearFourierNetwork, MergedInnerNearFourierNetwork
 from model_zoo_N32.get_network_torch_N32_compile import TenSelfNetwork_curv
+from tools.compile_utils import compile_cudagraphs_if_cuda
 # from cuda_practice.my_cuda_matvec_numba import block_diag_matvec
 # from cuda_practice.cuda_cg import solve_cg, solve_cg_onebyone
 # from cuda_practice.minres_my_cuda_matvec_numba import block_diag_matvec
@@ -3656,7 +3657,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         X = self.standardize(X, trans, rotate, rotCenter, scaling, multi_sortIdx)
         return X, (scaling, rotate, rotCenter, trans, multi_sortIdx)
 
-    @torch.compile(backend='cudagraphs')
+    @compile_cudagraphs_if_cuda
     def standardize(self, X, translation, rotation, rotCenter, scaling, multi_sortIdx):
         # compatible with multi ves
         N = len(multi_sortIdx[0])
@@ -3670,7 +3671,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         XrotSort = scaling * XrotSort
         return XrotSort
 
-    @torch.compile(backend='cudagraphs')
+    @compile_cudagraphs_if_cuda
     def destandardize(self, XrotSort, standardizationValues: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]):
         ''' compatible with multiple ves'''
         scaling, rotate, rotCenter, trans, sortIdx = standardizationValues

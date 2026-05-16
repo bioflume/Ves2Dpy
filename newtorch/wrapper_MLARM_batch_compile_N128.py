@@ -15,6 +15,7 @@ from model_zoo.get_network_torch import RelaxNetwork, TenSelfNetwork, MergedAdvN
 from math import ceil, sqrt
 from typing import List, Tuple
 from biem_support import exactStokesSL_onlyself
+from tools.compile_utils import compile_cudagraphs_if_cuda
 
 def relax_solve(X,  op):
     device = X.device
@@ -4137,7 +4138,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         X = self.standardize(X, trans, rotate, rotCenter, scaling, multi_sortIdx)
         return X, (scaling, rotate, rotCenter, trans, multi_sortIdx)
 
-    @torch.compile(backend='cudagraphs')
+    @compile_cudagraphs_if_cuda
     def standardize(self, X, translation, rotation, rotCenter, scaling, multi_sortIdx):
         # compatible with multi ves
         N = len(multi_sortIdx[0])
@@ -4151,7 +4152,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         XrotSort = scaling * XrotSort
         return XrotSort
 
-    @torch.compile(backend='cudagraphs')
+    @compile_cudagraphs_if_cuda
     def destandardize(self, XrotSort, standardizationValues: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]):
         ''' compatible with multiple ves'''
         scaling, rotate, rotCenter, trans, sortIdx = standardizationValues
