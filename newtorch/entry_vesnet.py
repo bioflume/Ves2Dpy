@@ -11,8 +11,10 @@ from copy import deepcopy
 from pathlib import Path
 
 from driver_vesnet import (
+    N128_RBF_UPSAMPLE_MAX,
     N128_TRAINED_ROOT_DEFAULT,
     N32_TRAINED_ROOT_DEFAULT,
+    RBF_UPSAMPLE_DEFAULT,
     simulate,
 )
 
@@ -101,7 +103,11 @@ def normalize_config(raw: dict) -> dict:
         # Adv / near / ten-adv norms are loaded from .npy under ../trained (mytorch N128 entry).
         if merged.get("trained_root") == N32_TRAINED_ROOT_DEFAULT:
             merged["trained_root"] = N128_TRAINED_ROOT_DEFAULT
-        merged.setdefault("rbf_params", {})["nlayers"] = 3
+        rbf = merged.setdefault("rbf_params", {})
+        rbf["nlayers"] = 3
+        rbf["rbf_upsample"] = min(
+            int(rbf.get("rbf_upsample", RBF_UPSAMPLE_DEFAULT)), N128_RBF_UPSAMPLE_MAX
+        )
     return merged
 
 

@@ -28,6 +28,8 @@ DTYPE_BY_RESOLUTION = {32: torch.float32, 128: torch.float32}
 N32_TRAINED_ROOT_DEFAULT = "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained"
 N128_TRAINED_ROOT_DEFAULT = "/work/09452/alberto47/vista/Ves2Dpy/trained"
 RBF_NLAYERS_BY_RESOLUTION = {32: 5, 128: 3}
+RBF_UPSAMPLE_DEFAULT = 4
+N128_RBF_UPSAMPLE_MAX = 2
 
 # Hardcoded relax / ten-self norms for N=128 (mytorch entry_driver_manyfreeSpaceVesicle_N128.py).
 RELAX_NORM = {
@@ -118,6 +120,16 @@ def resolve_rbf_nlayers(params: dict[str, Any], resolution: int) -> int:
     if resolution == 128:
         return RBF_NLAYERS_BY_RESOLUTION[128]
     return int(params.get("rbf_params", {}).get("nlayers", RBF_NLAYERS_BY_RESOLUTION[32]))
+
+
+def resolve_rbf_upsample(params: dict[str, Any], resolution: int) -> int:
+    """N=128 caps RBF upsample factor at 2 (wrapper supports <= 2 on this path)."""
+    upsample = int(
+        params.get("rbf_params", {}).get("rbf_upsample", RBF_UPSAMPLE_DEFAULT)
+    )
+    if resolution == 128:
+        return min(upsample, N128_RBF_UPSAMPLE_MAX)
+    return upsample
 
 
 def resolve_trained_root(params: dict[str, Any], resolution: int) -> Path:
@@ -250,7 +262,7 @@ def build_mlarm(
     dtype = DTYPE_BY_RESOLUTION[resolution]
     norms = load_network_norms(resolution, params)
     rep = params["repulsion_params"]
-    rbf = params["rbf_params"]
+    rbf_upsample = resolve_rbf_upsample(params, resolution)
 
     def to_tensor(arr):
         return torch.from_numpy(arr).to(device=device, dtype=dtype)
@@ -261,7 +273,7 @@ def build_mlarm(
         oc=oc,
         use_repulsion=rep["use_repulsion"],
         repStrength=rep["repulsion_strength"],
-        rbf_upsample=rbf["rbf_upsample"],
+        rbf_upsample=rbf_upsample,
         advNetInputNorm=to_tensor(norms["adv_in"]),
         advNetOutputNorm=to_tensor(norms["adv_out"]),
         relaxNetInputNorm=to_tensor(norms["relax_in"]),
@@ -309,6 +321,13 @@ def simulate(params: dict[str, Any], logger: logging.Logger) -> None:
         logger.warning(
             "Ignoring rbf_params.nlayers=%s for N=128; using nlayers=3.",
             rbf.get("nlayers"),
+        )
+    rbf_upsample = resolve_rbf_upsample(params, resolution)
+    if resolution == 128 and int(rbf.get("rbf_upsample", RBF_UPSAMPLE_DEFAULT)) > N128_RBF_UPSAMPLE_MAX:
+        logger.warning(
+            "Capping rbf_params.rbf_upsample=%s to %d for N=128.",
+            rbf.get("rbf_upsample"),
+            rbf_upsample,
         )
     dt = float(params.get("dt", 1e-5))
     num_steps = int(params["num_steps"])
