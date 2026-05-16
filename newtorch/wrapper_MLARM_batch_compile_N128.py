@@ -1829,8 +1829,8 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         fstandRe = torch.real(zh)
         fstandIm = torch.imag(zh)
 
-        velx_stand_ = torch.einsum('vnml, mv -> nvl', velx_real.double(), fstandRe) + torch.einsum('vnml, mv -> nvl', velx_imag.double(), fstandIm)
-        vely_stand_ = torch.einsum('vnml, mv -> nvl', vely_real.double(), fstandRe) + torch.einsum('vnml, mv -> nvl', vely_imag.double(), fstandIm)
+        velx_stand_ = torch.einsum('vnml, mv -> nvl', velx_real, fstandRe) + torch.einsum('vnml, mv -> nvl', velx_imag, fstandIm)
+        vely_stand_ = torch.einsum('vnml, mv -> nvl', vely_real, fstandRe) + torch.einsum('vnml, mv -> nvl', vely_imag, fstandIm)
         
         vx_ = torch.zeros((nv, nlayers, N), device=tracJump.device, dtype=tracJump.dtype)
         vy_ = torch.zeros((nv, nlayers, N), device=tracJump.device, dtype=tracJump.dtype)
