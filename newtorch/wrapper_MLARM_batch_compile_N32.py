@@ -636,7 +636,8 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
                  nearNetInputNorm, nearNetOutputNorm, 
                  innerNearNetInputNorm, innerNearNetOutputNorm, 
                  tenSelfNetInputNorm, tenSelfNetOutputNorm,
-                 tenAdvNetInputNorm, tenAdvNetOutputNorm, device, logger):        
+                 tenAdvNetInputNorm, tenAdvNetOutputNorm, device, logger,
+                 use_correct_area_length_replace: bool = False):
 
         super().__init__()
 
@@ -651,6 +652,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.eta = eta
         self.rbf_upsample = rbf_upsample
         self.logger = logger
+        self.use_correct_area_length_replace = use_correct_area_length_replace
 
         # Normalization values for advection (translation) networks
         self.advNetInputNorm = advNetInputNorm
@@ -703,7 +705,32 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
                                 # model_path="/work/09452/alberto47/vista/Ves2Dpy/trained/2025Feb_merged_advten.pth", 
                                 model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained/advten_downsample32/2024Oct_merged_advten.pth", 
                                 device = device)
-    
+
+    def _correct_area_and_length(self, Xnew, Xold):
+        N = Xnew.shape[0] // 2
+        with torch.enable_grad():
+            if self.use_correct_area_length_replace:
+                Xnew, mask_skip = self.oc.correctAreaAndLengthAugLag_replace(
+                    Xnew, self.area0, self.len0, self.oc
+                )
+            else:
+                Xnew = self.oc.correctAreaAndLengthAugLag(Xnew, self.area0, self.len0)
+
+        if self.use_correct_area_length_replace:
+            num_skip = torch.sum(mask_skip)
+            if num_skip > 0:
+                X_skipped = Xnew[:, mask_skip].reshape(2 * N, -1)
+                trans, rotate, _, _, _ = self.referenceValues(X_skipped)
+                ellipses = torch.repeat_interleave(
+                    self.ellipse, num_skip, dim=-1
+                ).to(Xold.device)
+                ellipses = self.rotationOperator(
+                    ellipses, -rotate, torch.zeros(2, num_skip, device=Xold.device)
+                )
+                ellipses = self.translateOp(ellipses, -trans)
+                Xnew[:, mask_skip] = ellipses
+
+        return Xnew
 
     # def time_step_many(self, Xold, tenOld):
     #     # oc = self.oc
@@ -964,8 +991,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         
 
         start.record()
-        with torch.enable_grad():
-            Xnew = self.oc.correctAreaAndLengthAugLag(Xnew, self.area0, self.len0)
+        Xnew = self._correct_area_and_length(Xnew, Xold)
         end.record()
         torch.cuda.synchronize()
         print(f'correctAreaLength {start.elapsed_time(end)/1000} sec.')
@@ -1176,24 +1202,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         
 
         # start.record()
-        with torch.enable_grad():
-            # Xnew = self.oc.correctAreaAndLength(Xnew, self.area0, self.len0)
-            # Xnew = self.oc.correctAreaAndLengthAugLag(Xnew, self.area0, self.len0)
-            Xnew, mask_skip = self.oc.correctAreaAndLengthAugLag_replace(Xnew, self.area0, self.len0, self.oc)
-        num_skip = torch.sum(mask_skip)
-        if num_skip > 0:
-            X_skipped = Xnew[:, mask_skip].reshape(2*N, -1)
-            # _, standardizationValues = self.standardizationStep(X_skipped)
-            # _, rotate, _, trans, _ = standardizationValues
-            trans, rotate, _, _, _  = self.referenceValues(X_skipped)
-            ellipses = torch.repeat_interleave(self.ellipse, num_skip, dim=-1).to(Xold.device)
-
-            # Take rotation back
-            ellipses = self.rotationOperator(ellipses, -rotate, torch.zeros(2, num_skip, device=Xold.device))
-            # Take translation back
-            ellipses = self.translateOp(ellipses, -trans)
-        
-            Xnew[:, mask_skip] = ellipses
+        Xnew = self._correct_area_and_length(Xnew, Xold)
 
         # end.record()
         # torch.cuda.synchronize()
