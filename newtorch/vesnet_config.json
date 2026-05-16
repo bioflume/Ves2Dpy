@@ -1,13 +1,27 @@
 {
-  "filename": "linshi",
+  "input": "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/shear_N32.npy",
+  "outfile": "linshi",
+  "output_dir": "./output",
+  "logging": true,
   "resolution": 32,
-  "bgFlow": "vortex",
-  "speed": 400,
-  "chanWidth": 2.5,
-  "vortexSize": 2.5,
-  "nlayers": 5,
-  "rbf_upsample": 4,
-  "use_repulsion": false,
-  "repulsion_strength": 1e4,
-  "eta": 1/32
+  "num_steps": 100000,
+  "dt": 1e-5,
+  "flow": {
+    "name": "vortex",
+    "speed": 400,
+    "chanWidth": 2.5,
+    "vortexSize": 2.5
+  },
+  "rbf_params": {
+    "nlayers": 5,
+    "rbf_upsample": 4
+  },
+  "repulsion_params": {
+    "use_repulsion": false,
+    "repulsion_strength": 10000.0,
+    "eta": 0.03125
+  },
+  "trained_root": "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained",
+  "inner_near_root": "/work/09452/alberto47/ls6/vesicle_nearF2024/trained_disth_nocoords/inner_downsample32",
+  "relaxed_shape": "relaxed_shape.npy"
 }
