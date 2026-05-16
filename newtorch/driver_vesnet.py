@@ -27,6 +27,7 @@ DTYPE_BY_RESOLUTION = {32: torch.float32, 128: torch.float32}
 
 N32_TRAINED_ROOT_DEFAULT = "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained"
 N128_TRAINED_ROOT_DEFAULT = "/work/09452/alberto47/vista/Ves2Dpy/trained"
+RBF_NLAYERS_BY_RESOLUTION = {32: 5, 128: 3}
 
 # Hardcoded relax / ten-self norms for N=128 (mytorch entry_driver_manyfreeSpaceVesicle_N128.py).
 RELAX_NORM = {
@@ -110,6 +111,13 @@ def _resolve_path(base: str | Path, rel: str) -> Path:
     if path.is_absolute():
         return path
     return Path(base) / path
+
+
+def resolve_rbf_nlayers(params: dict[str, Any], resolution: int) -> int:
+    """N=128 near-field RBF correction uses 3 layers (mytorch / wrapper default)."""
+    if resolution == 128:
+        return RBF_NLAYERS_BY_RESOLUTION[128]
+    return int(params.get("rbf_params", {}).get("nlayers", RBF_NLAYERS_BY_RESOLUTION[32]))
 
 
 def resolve_trained_root(params: dict[str, Any], resolution: int) -> Path:
@@ -296,7 +304,12 @@ def simulate(params: dict[str, Any], logger: logging.Logger) -> None:
 
     flow = params["flow"]
     rbf = params["rbf_params"]
-    nlayers = rbf["nlayers"]
+    nlayers = resolve_rbf_nlayers(params, resolution)
+    if resolution == 128 and rbf.get("nlayers") not in (None, 3):
+        logger.warning(
+            "Ignoring rbf_params.nlayers=%s for N=128; using nlayers=3.",
+            rbf.get("nlayers"),
+        )
     dt = float(params.get("dt", 1e-5))
     num_steps = int(params["num_steps"])
 

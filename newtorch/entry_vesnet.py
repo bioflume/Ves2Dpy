@@ -101,6 +101,7 @@ def normalize_config(raw: dict) -> dict:
         # Adv / near / ten-adv norms are loaded from .npy under ../trained (mytorch N128 entry).
         if merged.get("trained_root") == N32_TRAINED_ROOT_DEFAULT:
             merged["trained_root"] = N128_TRAINED_ROOT_DEFAULT
+        merged.setdefault("rbf_params", {})["nlayers"] = 3
     return merged
 
 
