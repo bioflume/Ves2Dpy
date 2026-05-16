@@ -343,10 +343,10 @@ def simulate(params: dict[str, Any], logger: logging.Logger) -> None:
 
     currtime = 0.0
     for it in tqdm(range(num_steps)):
-        t_start = time.time()
+        # t_start = time.time()
         with torch.no_grad():
             x, ten = mlarm.time_step_many_noinfo(x, ten, nlayers=nlayers)
-        t_end = time.time()
+        # t_end = time.time()
 
         area, length = oc.geomProp(x)[1:]
         err_area = torch.max(torch.abs(area - mlarm.area0) / mlarm.area0)
@@ -360,7 +360,7 @@ def simulate(params: dict[str, Any], logger: logging.Logger) -> None:
             resolution,
             currtime,
         )
-        logger.info("Solving with networks takes %.4f sec.", t_end - t_start)
+        # logger.info("Solving with networks takes %.4f sec.", t_end - t_start)
         logger.info("Error in area and length: %s", max(err_area, err_len).item())
         logger.info("********************************************\n")
 

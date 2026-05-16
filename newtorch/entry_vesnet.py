@@ -14,12 +14,13 @@ from driver_vesnet import simulate
 
 DEFAULT_PARAMS: dict = {
     "input": "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/shear_N32.npy",
-    "outfile": "linshi",
+    "outfile": "debug",
     "output_dir": "./output",
     "logging": True,
+    "log_file": "debug.log",
     "log_to_console": True,
     "resolution": 32,
-    "num_steps": 100_000,
+    "num_steps": 100,
     "dt": 1e-5,
     "flow": {
         "name": "vortex",
@@ -113,7 +114,7 @@ def setup_logger(params: dict) -> logging.Logger:
     if params.get("logging", True):
         log_name = params.get("log_file")
         if not log_name:
-            log_name = f"try_repulse_{params.get('outfile', 'run')}.log"
+            log_name = f"debug_{params.get('outfile', 'run')}.log"
         handler = logging.FileHandler(log_name, mode="w")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
