@@ -22,8 +22,13 @@ import torch._dynamo  # noqa: E402
 
 torch._dynamo.reset()
 
-DTYPE_BY_RESOLUTION = {32: torch.float32, 128: torch.float64}
+# mytorch/entry_driver_manyfreeSpaceVesicle_N128.py uses float32 at N=128.
+DTYPE_BY_RESOLUTION = {32: torch.float32, 128: torch.float32}
 
+N32_TRAINED_ROOT_DEFAULT = "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained"
+N128_TRAINED_ROOT_DEFAULT = "/work/09452/alberto47/vista/Ves2Dpy/trained"
+
+# Hardcoded relax / ten-self norms for N=128 (mytorch entry_driver_manyfreeSpaceVesicle_N128.py).
 RELAX_NORM = {
     32: {
         "input": np.array(
@@ -107,8 +112,16 @@ def _resolve_path(base: str | Path, rel: str) -> Path:
     return Path(base) / path
 
 
+def resolve_trained_root(params: dict[str, Any], resolution: int) -> Path:
+    """Pick trained/ directory for network .npy norms (N=128 uses ../trained like mytorch)."""
+    root = params.get("trained_root", N32_TRAINED_ROOT_DEFAULT)
+    if resolution == 128 and root == N32_TRAINED_ROOT_DEFAULT:
+        return Path(N128_TRAINED_ROOT_DEFAULT)
+    return Path(root)
+
+
 def load_network_norms(resolution: int, params: dict[str, Any]) -> dict[str, np.ndarray]:
-    trained_root = Path(params["trained_root"])
+    trained_root = resolve_trained_root(params, resolution)
     files = TRAINED_FILES[resolution]
     norms = {
         "adv_in": np.load(_resolve_path(trained_root, files["adv_in"])),
@@ -294,8 +307,6 @@ def simulate(params: dict[str, Any], logger: logging.Logger) -> None:
 
     x0 = torch.from_numpy(xics).to(device=device, dtype=dtype)
     x0 = resample_initial_positions(x0, resolution)
-    if resolution == 32:
-        x0 = x0.float()
 
     n = resolution
     nv = x0.shape[1]

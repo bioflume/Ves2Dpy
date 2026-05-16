@@ -10,7 +10,11 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
-from driver_vesnet import simulate
+from driver_vesnet import (
+    N128_TRAINED_ROOT_DEFAULT,
+    N32_TRAINED_ROOT_DEFAULT,
+    simulate,
+)
 
 DEFAULT_PARAMS: dict = {
     "input": "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/shear_N32.npy",
@@ -37,7 +41,7 @@ DEFAULT_PARAMS: dict = {
         "repulsion_strength": 1e4,
         "eta": 1 / 32,
     },
-    "trained_root": "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained",
+    "trained_root": N32_TRAINED_ROOT_DEFAULT,
     "inner_near_root": (
         "/work/09452/alberto47/ls6/vesicle_nearF2024/"
         "trained_disth_nocoords/inner_downsample32"
@@ -94,8 +98,9 @@ def normalize_config(raw: dict) -> dict:
     if int(merged.get("resolution", 32)) == 128:
         if "output_dir" not in raw:
             merged["output_dir"] = "./output_N128"
-        if "trained_root" not in raw:
-            merged["trained_root"] = "../trained"
+        # Adv / near / ten-adv norms are loaded from .npy under ../trained (mytorch N128 entry).
+        if merged.get("trained_root") == N32_TRAINED_ROOT_DEFAULT:
+            merged["trained_root"] = N128_TRAINED_ROOT_DEFAULT
     return merged
 
 
