@@ -1,0 +1,23 @@
+{
+  "input": "initial.npy",
+  "outfile": "one_ves_parabolic",
+  "output_dir": "output",
+  "logging": true,
+  "log_file": "one_ves_parabolic.log",
+  "resolution": 32,
+  "num_steps": 500,
+  "dt": 1e-5,
+  "flow": {
+    "name": "parabolic",
+    "speed": 8000.0
+  },
+  "rbf_params": {
+    "nlayers": 5,
+    "rbf_upsample": 4
+  },
+  "repulsion_params": {
+    "use_repulsion": false,
+    "repulsion_strength": 10000.0,
+    "eta": 0.03125
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "input": "48vesTG_N32.npy",
+  "input_indices": [0, 6, 12, 18, 24, 30, 36, 42],
+  "outfile": "multi_ves_vortex",
+  "output_dir": "output",
+  "logging": true,
+  "log_file": "multi_ves_vortex.log",
+  "resolution": 32,
+  "num_steps": 300,
+  "dt": 1e-5,
+  "flow": {
+    "name": "vortex",
+    "speed": 400.0,
+    "chanWidth": 2.5,
+    "vortexSize": 2.5
+  },
+  "rbf_params": {
+    "nlayers": 5,
+    "rbf_upsample": 4
+  },
+  "repulsion_params": {
+    "use_repulsion": false,
+    "repulsion_strength": 10000.0,
+    "eta": 0.03125
+  }
+}

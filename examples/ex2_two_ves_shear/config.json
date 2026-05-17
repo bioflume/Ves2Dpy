@@ -1,0 +1,23 @@
+{
+  "input": "shear_N32.npy",
+  "outfile": "two_ves_shear",
+  "output_dir": "output",
+  "logging": true,
+  "log_file": "two_ves_shear.log",
+  "resolution": 32,
+  "num_steps": 500,
+  "dt": 1e-5,
+  "flow": {
+    "name": "shear",
+    "speed": 2000.0
+  },
+  "rbf_params": {
+    "nlayers": 5,
+    "rbf_upsample": 4
+  },
+  "repulsion_params": {
+    "use_repulsion": true,
+    "repulsion_strength": 10000.0,
+    "eta": 0.03125
+  }
+}

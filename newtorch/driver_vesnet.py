@@ -166,12 +166,17 @@ def load_initial_shapes(params: dict[str, Any]) -> np.ndarray:
     path = Path(params["input"])
     fmt = params.get("input_format", "npy" if path.suffix == ".npy" else "mat")
     if fmt == "npy":
-        return np.load(path)
-    var = params.get("input_var", "X")
-    data = loadmat(path)
-    if var not in data:
-        raise KeyError(f"Variable '{var}' not found in {path}")
-    return data[var]
+        x = np.load(path)
+    else:
+        var = params.get("input_var", "X")
+        data = loadmat(path)
+        if var not in data:
+            raise KeyError(f"Variable '{var}' not found in {path}")
+        x = data[var]
+    indices = params.get("input_indices")
+    if indices is not None:
+        x = x[:, indices]
+    return x
 
 
 def resample_initial_positions(X0: torch.Tensor, resolution: int) -> torch.Tensor:
