@@ -37,13 +37,13 @@ def transform(
     center: tuple[float, float],
     angle: float = 0.0,
 ) -> np.ndarray:
-    """Rotate and translate a single vesicle (2N x 1)."""
+    """Rotate and translate one vesicle; return (2N, 1)."""
     c, s = np.cos(angle), np.sin(angle)
     x = x0[:N, 0].copy()
     y = x0[N:, 0].copy()
     xr = c * x - s * y + center[0]
     yr = s * x + c * y + center[1]
-    return np.stack([xr, yr], axis=0)
+    return np.concatenate((xr, yr), axis=0).reshape(2 * N, 1)
 
 
 def write_example(name: str, array: np.ndarray) -> Path:
@@ -53,10 +53,15 @@ def write_example(name: str, array: np.ndarray) -> Path:
     return out
 
 
-def build_ex1(oc: Curve) -> np.ndarray:
-    """Unit-length ellipse, tilted and shifted off the parabolic centerline (y = 0)."""
-    x0 = unit_ellipse(oc)
-    return transform(x0, center=(0.0, 0.065), angle=np.pi / 2)[:, None]
+def build_ex1(oc: Curve, nv: int = 1) -> np.ndarray:
+    """Unit-length ellipse, off-center; returns (2N, nv) with nv=1."""
+    if nv != 1:
+        raise ValueError(f"ex1 builds a single vesicle; nv must be 1, got {nv}")
+    x0 = unit_ellipse(oc)  # (2N, 1)
+    x = transform(x0, center=(0.0, 0.065), angle=np.pi / 2)
+    if x.shape != (2 * N, nv):
+        raise RuntimeError(f"expected shape ({2 * N}, {nv}), got {x.shape}")
+    return x
 
 
 def main() -> None:
