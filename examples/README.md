@@ -42,10 +42,23 @@ Copy data files into the example folders, or set `VES2D_SHEAR_IC` / `VES2D_TG_IC
 ./examples/ex1_one_ves_parabolic/run.sh --num-steps 100
 ```
 
+### Optional: plot frames and video
+
+After a successful run, generate PNG frames (`output/<outfile>/1.png`, …) and `output/<outfile>.mp4` using `newtorch/TG_postprocess.py` and `newtorch/create_video.py`:
+
+```bash
+./examples/ex1_one_ves_parabolic/run.sh --postprocess
+# or
+VES2D_POSTPROCESS=1 ./examples/ex1_one_ves_parabolic/run.sh
+```
+
+Requires **matplotlib**, **opencv-python** (`cv2`), and **tqdm**.
+
 ## Outputs
 
 - `output/<outfile>.bin` — trajectory
 - `<outfile>.log` — run log
+- With `--postprocess`: `output/<outfile>/*.png` and `output/<outfile>.mp4`
 
 ## Regenerate ex1 initial conditions
 

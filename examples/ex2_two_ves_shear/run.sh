@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../_common.sh
 source "${SCRIPT_DIR}/../_common.sh"
 
+example_parse_args "$@"
 SHEAR_IC="${VES2D_SHEAR_IC:-${SCRIPT_DIR}/shear_N32.npy}"
 if [[ ! -f "${SHEAR_IC}" ]]; then
   echo "Missing ${SHEAR_IC}" >&2
@@ -17,4 +18,5 @@ EXAMPLE_DIR="${SCRIPT_DIR}"
 RESOLVED="$(mktemp "${TMPDIR:-/tmp}/ves2d_ex2_config.XXXXXX.json")"
 trap 'rm -f "${RESOLVED}"' EXIT
 example_resolve_config "${SCRIPT_DIR}/config.json" "${RESOLVED}"
-example_run_vesnet "${RESOLVED}" "$@"
+example_run_vesnet "${RESOLVED}" "${EXAMPLE_RUN_ARGS[@]}"
+example_maybe_postprocess "${RESOLVED}"

@@ -59,3 +59,32 @@ example_run_vesnet() {
   cd "${NEWTORCH}"
   python entry_vesnet.py --config "${resolved_config}" --resolution 32 "$@"
 }
+
+# Optional: VES2D_POSTPROCESS=1 or pass --postprocess on run.sh
+example_wants_postprocess() {
+  [[ "${VES2D_POSTPROCESS:-0}" == 1 ]] || [[ "${EXAMPLE_POSTPROCESS:-0}" == 1 ]]
+}
+
+example_parse_args() {
+  EXAMPLE_POSTPROCESS=0
+  EXAMPLE_RUN_ARGS=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --postprocess)
+        EXAMPLE_POSTPROCESS=1
+        shift
+        ;;
+      *)
+        EXAMPLE_RUN_ARGS+=("$1")
+        shift
+        ;;
+    esac
+  done
+}
+
+example_maybe_postprocess() {
+  local resolved_config="$1"
+  example_wants_postprocess || return 0
+  echo "Post-processing: plotting frames and building video..."
+  python "${_EXAMPLES_DIR}/plot_and_video.py" --config "${resolved_config}" "${@}"
+}
