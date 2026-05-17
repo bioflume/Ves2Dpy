@@ -84,7 +84,8 @@ example_parse_args() {
 
 example_maybe_postprocess() {
   local resolved_config="$1"
+  shift
   example_wants_postprocess || return 0
   echo "Post-processing: plotting frames and building video..."
-  python "${_EXAMPLES_DIR}/plot_and_video.py" --config "${resolved_config}" "${@}"
+  python "${_EXAMPLES_DIR}/plot_and_video.py" --config "${resolved_config}" "$@"
 }
