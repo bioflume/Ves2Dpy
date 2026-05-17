@@ -163,6 +163,12 @@ def load_network_norms(resolution: int, params: dict[str, Any]) -> dict[str, np.
 
 
 def load_initial_shapes(params: dict[str, Any]) -> np.ndarray:
+    """Load vesicle coordinates with shape (2N, nv).
+
+    Rows ``0:N-1`` are x-coordinates, rows ``N:2N-1`` are y-coordinates;
+    column ``j`` is vesicle ``j``. Optional ``input_indices`` selects vesicle
+    columns (not rows).
+    """
     path = Path(params["input"])
     fmt = params.get("input_format", "npy" if path.suffix == ".npy" else "mat")
     if fmt == "npy":
@@ -173,9 +179,19 @@ def load_initial_shapes(params: dict[str, Any]) -> np.ndarray:
         if var not in data:
             raise KeyError(f"Variable '{var}' not found in {path}")
         x = data[var]
+    x = np.asarray(x)
+    if x.ndim != 2:
+        raise ValueError(
+            f"Initial shapes must be (2N, nv); got array with shape {x.shape}"
+        )
+    if x.shape[0] % 2 != 0:
+        raise ValueError(
+            f"Initial shapes first dimension must be 2N (even); got {x.shape[0]}"
+        )
     indices = params.get("input_indices")
     if indices is not None:
-        x = x[:, indices]
+        cols = np.asarray(indices, dtype=int)
+        x = np.ascontiguousarray(x[:, cols])
     return x
 
 

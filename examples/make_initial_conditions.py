@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Build initial-condition .npy files (shape 2N x nv) for ex1 (ex2/ex3 use bundled .npy ICs)."""
+"""Build ex1 initial.npy with vesicle layout (2N, nv).
+
+Rows 0:N-1 are x, rows N:2N-1 are y; each column is one vesicle (N=32).
+ex2/ex3 use external .npy files in the same layout.
+"""
 
 from __future__ import annotations
 
