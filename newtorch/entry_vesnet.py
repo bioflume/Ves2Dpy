@@ -56,7 +56,7 @@ def _deep_update(base: dict, override: dict) -> dict:
     out = deepcopy(base)
     for key, val in override.items():
         if key in out and isinstance(out[key], dict) and isinstance(val, dict):
-            _deep_update(out[key], val)
+            out[key] = _deep_update(out[key], val)
         else:
             out[key] = val
     return out
