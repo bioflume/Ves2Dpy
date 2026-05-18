@@ -13,7 +13,7 @@ from tqdm import tqdm
 def create_video_from_images(image_folder: str | Path, output_video_file: str | Path, fps: int) -> None:
     image_folder = Path(image_folder)
     images = []
-    for i in range(1, 100_000_000):
+    for i in range(100_000_000):
         name = f"{i}.png"
         if (image_folder / name).is_file():
             images.append(name)
