@@ -432,7 +432,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
             device=device,
         )
 
-    def time_step_many_noinfo(self, Xold, tenOld, nlayers=3):
+    def time_step(self, Xold, tenOld, nlayers=3):
         # oc = self.oc
         torch.set_default_device(Xold.device)
         # background velocity on vesicles
