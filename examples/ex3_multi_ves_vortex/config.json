@@ -6,7 +6,7 @@
   "logging": true,
   "log_file": "multi_ves_vortex.log",
   "resolution": 32,
-  "num_steps": 300,
+  "num_steps": 2500,
   "dt": 1e-5,
   "flow": {
     "name": "vortex",
@@ -15,8 +15,8 @@
     "vortexSize": 2.5
   },
   "rbf_params": {
-    "nlayers": 5,
-    "rbf_upsample": 4
+    "nlayers": 3,
+    "rbf_upsample": 2
   },
   "repulsion_params": {
     "use_repulsion": false,

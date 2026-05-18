@@ -5,18 +5,18 @@
   "logging": true,
   "log_file": "two_ves_shear.log",
   "resolution": 32,
-  "num_steps": 500,
+  "num_steps": 400,
   "dt": 1e-5,
   "flow": {
     "name": "shear",
     "speed": 2000.0
   },
   "rbf_params": {
-    "nlayers": 5,
-    "rbf_upsample": 4
+    "nlayers": 3,
+    "rbf_upsample": 2
   },
   "repulsion_params": {
-    "use_repulsion": true,
+    "use_repulsion": false,
     "repulsion_strength": 10000.0,
     "eta": 0.03125
   }
