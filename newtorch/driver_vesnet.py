@@ -228,7 +228,8 @@ def set_bg_flow(flow: dict[str, Any], resolution: int):
                  -torch.cos(X[:n]) * torch.sin(X[n:]))
             )
         if name == "parabolic":
-            width = 5 if resolution == 32 else 0.375
+            # width = 5 if resolution == 32 else 0.375
+            width = 0.375
             return torch.vstack(
                 (speed * (1 - (X[n:] / width) ** 2), torch.zeros_like(X[:n]))
             )
@@ -409,7 +410,7 @@ def simulate(params: dict[str, Any], logger: logging.Logger) -> None:
     for it in tqdm(range(num_steps)):
         # t_start = time.time()
         with torch.no_grad():
-            x, ten = mlarm.time_step_many_noinfo(x, ten, nlayers=nlayers)
+            x, ten = mlarm.time_step_many(x, ten, nlayers=nlayers)
         # t_end = time.time()
 
         area, length = oc.geomProp(x)[1:]
