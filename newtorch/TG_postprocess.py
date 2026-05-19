@@ -43,6 +43,16 @@ def plot_vesicle_data(
 
     vesx, vesy, time, _n, _nv, xinit, yinit = load_ves2d_file(str(file_name))
     xlim, ylim = _axis_limits(vesx, vesy, xlim, ylim)
+    fig, ax = plt.subplots(figsize=(8, 8))
+    x1 = np.vstack((xinit, xinit[0, :]))
+    y1 = np.vstack((yinit, yinit[0, :]))
+    ax.plot(x1, y1, "red", linewidth=2)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_title(f"t = 0 {name}")
+    fig.savefig(frames_dir / f"0.png", dpi=dpi)
+        
 
     for it in tqdm(range(len(time)), desc=f"plot {name}"):
         fig, ax = plt.subplots(figsize=(8, 8))
