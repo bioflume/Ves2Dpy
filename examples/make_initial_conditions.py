@@ -15,8 +15,8 @@ import numpy as np
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-NEWTORCH = REPO_ROOT / "newtorch"
-sys.path.insert(0, str(NEWTORCH))
+TORCH_PKG = REPO_ROOT / "torch_version"
+sys.path.insert(0, str(TORCH_PKG))
 
 from curve_batch_compile import Curve  # noqa: E402
 

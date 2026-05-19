@@ -1,6 +1,6 @@
 # Ves2Dpy examples (N=32)
 
-MLARM / vesnet runs at **N=32** via `newtorch/entry_vesnet.py`.
+MLARM / vesnet runs at **N=32** via `torch_version/entry_vesnet.py`.
 
 | Directory | Case |
 |-----------|------|
@@ -40,7 +40,7 @@ Examples: `shear_N32.npy` is `(64, 2)`; `48vesTG_N32.npy` is `(64, 48)`.
 
 ### Optional: plot frames and video
 
-After a successful run, generate PNG frames (`output/<outfile>/1.png`, …) and `output/<outfile>.mp4` using `newtorch/TG_postprocess.py` and `newtorch/create_video.py`:
+After a successful run, generate PNG frames (`output/<outfile>/1.png`, …) and `output/<outfile>.mp4` using `torch_version/TG_postprocess.py` and `torch_version/create_video.py`:
 
 ```bash
 ./examples/ex1_one_ves_parabolic/run.sh --postprocess

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot frames from an example .bin and encode a video (wraps newtorch postprocess tools)."""
+"""Plot frames from an example .bin and encode a video (wraps torch_version postprocess tools)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-NEWTORCH = REPO_ROOT / "newtorch"
-sys.path.insert(0, str(NEWTORCH))
+TORCH_PKG = REPO_ROOT / "torch_version"
+sys.path.insert(0, str(TORCH_PKG))
 
 from create_video import create_video_from_images  # noqa: E402
 from TG_postprocess import plot_vesicle_data  # noqa: E402

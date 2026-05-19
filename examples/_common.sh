@@ -3,8 +3,8 @@ set -euo pipefail
 
 _EXAMPLES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${_EXAMPLES_DIR}/.." && pwd)"
-NEWTORCH="${REPO_ROOT}/newtorch"
-export PYTHONPATH="${NEWTORCH}:${REPO_ROOT}/model_zoo_N32:${PYTHONPATH:-}"
+TORCH_PKG="${REPO_ROOT}/torch_version"
+export PYTHONPATH="${TORCH_PKG}:${REPO_ROOT}/model_zoo_N32:${PYTHONPATH:-}"
 
 example_ensure_hf_assets() {
   if [[ -n "${VES2D_TRAINED_ROOT:-}" && -n "${VES2D_INNER_NEAR_ROOT:-}" ]]; then
@@ -16,7 +16,7 @@ example_ensure_hf_assets() {
   fi
   echo "Downloading N=32 trained assets from Hugging Face (set VES2D_HF_REPO to override repo)..."
   local roots
-  roots="$(cd "${NEWTORCH}" && python - <<'PY'
+  roots="$(cd "${TORCH_PKG}" && python - <<'PY'
 from tools.model_hub import ensure_resolution_assets
 layout = ensure_resolution_assets(32)
 print(layout.trained_root)
@@ -75,7 +75,7 @@ PY
 example_run_vesnet() {
   local resolved_config="$1"
   shift
-  cd "${NEWTORCH}"
+  cd "${TORCH_PKG}"
   python entry_vesnet.py --config "${resolved_config}" --resolution 32 "$@"
 }
 
