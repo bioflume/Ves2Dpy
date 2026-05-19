@@ -11,6 +11,8 @@ mytorch/output/
 mypython/
 cuda_practice/
 mytorch/
+trained_assets/
+scripts/
 .vscode/
 *.docx
 *.doc
