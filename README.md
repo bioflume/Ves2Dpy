@@ -155,7 +155,6 @@ Writes a binary trajectory compatible with `torch_version/tools/load_ves2d_file.
 ```
 Ves2Dpy/
 ├── README.md                 # This file
-├── AGENTS.md                 # Detailed map for contributors / agents
 │
 ├── torch_version/            # Main PyTorch package (geometry, BIEM, VesNet driver)
 │   ├── curve_batch_compile.py
