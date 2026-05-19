@@ -3,16 +3,30 @@
 *.npy
 *.mat
 *.png
+*.mov
+*.mp4
 timing/
 FilesToCheckNetworkPredictions/
 mytorch/output/
 mypython/
+cuda_practice/
+mytorch/
 .vscode/
+*.docx
+*.doc
+
+# log
+*.o[0-9]*
+*.e[0-9]*
+*.log
 
 # pytorch
 *.pth
 *.npy
+!examples/ex2_two_ves_shear/shear_N32.npy
+!examples/ex3_multi_ves_vortex/48vesTG_N32.npy
 *.bin
+*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
