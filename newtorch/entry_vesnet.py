@@ -17,6 +17,7 @@ from driver_vesnet import (
     RBF_UPSAMPLE_DEFAULT,
     simulate,
 )
+from tools.model_hub import default_repo_id, resolve_params_assets
 
 DEFAULT_PARAMS: dict = {
     "input": "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/shear_N32.npy",
@@ -43,11 +44,13 @@ DEFAULT_PARAMS: dict = {
         "repulsion_strength": 1e4,
         "eta": 1 / 32,
     },
-    "trained_root": N32_TRAINED_ROOT_DEFAULT,
-    "inner_near_root": (
-        "/work/09452/alberto47/ls6/vesicle_nearF2024/"
-        "trained_disth_nocoords/inner_downsample32"
-    ),
+    "trained_root": None,
+    "inner_near_root": None,
+    "use_hf_hub": True,
+    "hf_repo": None,
+    "hf_revision": None,
+    "hf_cache_dir": None,
+    "force_hf_download": False,
     "relaxed_shape": "relaxed_shape.npy",
 }
 
@@ -97,11 +100,15 @@ def normalize_config(raw: dict) -> dict:
         raw["outfile"] = raw.pop("filename")
 
     merged = _deep_update(params, raw)
+    if merged.get("hf_repo") is None:
+        merged["hf_repo"] = default_repo_id()
     if int(merged.get("resolution", 32)) == 128:
         if "output_dir" not in raw:
             merged["output_dir"] = "./output_N128"
-        # Adv / near / ten-adv norms are loaded from .npy under ../trained (mytorch N128 entry).
-        if merged.get("trained_root") == N32_TRAINED_ROOT_DEFAULT:
+        # Legacy cluster defaults when not using Hugging Face Hub.
+        if merged.get("trained_root") in (None, N32_TRAINED_ROOT_DEFAULT) and not merged.get(
+            "use_hf_hub", True
+        ):
             merged["trained_root"] = N128_TRAINED_ROOT_DEFAULT
         rbf = merged.setdefault("rbf_params", {})
         rbf["nlayers"] = 3
@@ -183,6 +190,19 @@ def main() -> None:
     args = parse_args()
     params = load_params(args.config)
     params = apply_cli_overrides(params, args)
+    try:
+        params = resolve_params_assets(params)
+    except ImportError as exc:
+        if params.get("use_hf_hub", True) and not params.get("trained_root"):
+            raise SystemExit(
+                "Automatic model download requires huggingface_hub. "
+                "Install with: pip install -r requirements-hf.txt\n"
+                "Or set trained_root / inner_near_root and use_hf_hub: false."
+            ) from exc
+        if not params.get("trained_root"):
+            raise SystemExit(
+                "Set trained_root and inner_near_root (N=32), or install huggingface_hub."
+            ) from exc
     logger = setup_logger(params)
     logger.info("Config: %s", args.config)
     logger.info("Resolution N=%d", params["resolution"])

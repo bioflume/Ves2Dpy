@@ -6,14 +6,33 @@ REPO_ROOT="$(cd "${_EXAMPLES_DIR}/.." && pwd)"
 NEWTORCH="${REPO_ROOT}/newtorch"
 export PYTHONPATH="${NEWTORCH}:${REPO_ROOT}/model_zoo_N32:${PYTHONPATH:-}"
 
-if [[ -z "${VES2D_TRAINED_ROOT:-}" ]]; then
-  echo "Set VES2D_TRAINED_ROOT to the N=32 trained/ directory (adv, near, ten-adv norms and .pth)." >&2
-  exit 1
-fi
-if [[ -z "${VES2D_INNER_NEAR_ROOT:-}" ]]; then
-  echo "Set VES2D_INNER_NEAR_ROOT to the inner near-field trained directory." >&2
-  exit 1
-fi
+example_ensure_hf_assets() {
+  if [[ -n "${VES2D_TRAINED_ROOT:-}" && -n "${VES2D_INNER_NEAR_ROOT:-}" ]]; then
+    return 0
+  fi
+  if [[ "${VES2D_USE_HF_HUB:-1}" == "0" ]]; then
+    echo "Set VES2D_TRAINED_ROOT and VES2D_INNER_NEAR_ROOT, or set VES2D_USE_HF_HUB=1." >&2
+    exit 1
+  fi
+  echo "Downloading N=32 trained assets from Hugging Face (set VES2D_HF_REPO to override repo)..."
+  local roots
+  roots="$(cd "${NEWTORCH}" && python - <<'PY'
+from tools.model_hub import ensure_resolution_assets
+layout = ensure_resolution_assets(32)
+print(layout.trained_root)
+print(layout.inner_near_root)
+PY
+)"
+  if [[ -z "${roots}" ]]; then
+    echo "Failed to resolve trained asset paths from Hugging Face." >&2
+    exit 1
+  fi
+  VES2D_TRAINED_ROOT="$(echo "${roots}" | sed -n '1p')"
+  VES2D_INNER_NEAR_ROOT="$(echo "${roots}" | sed -n '2p')"
+  export VES2D_TRAINED_ROOT VES2D_INNER_NEAR_ROOT
+}
+
+example_ensure_hf_assets
 
 example_prepare() {
   local name="$1"

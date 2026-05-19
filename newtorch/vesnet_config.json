@@ -21,7 +21,9 @@
     "repulsion_strength": 10000.0,
     "eta": 0.03125
   },
-  "trained_root": "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained",
-  "inner_near_root": "/work/09452/alberto47/ls6/vesicle_nearF2024/trained_disth_nocoords/inner_downsample32",
+  "use_hf_hub": true,
+  "hf_repo": "ves2d/ves2d-trained",
+  "trained_root": null,
+  "inner_near_root": null,
   "relaxed_shape": "relaxed_shape.npy"
 }

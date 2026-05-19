@@ -347,6 +347,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         device,
         logger,
         use_correct_area_length_replace: bool = False,
+        model_paths: dict | None = None,
     ):
         super().__init__()
 
@@ -365,13 +366,19 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.logger = logger
         self.use_correct_area_length_replace = use_correct_area_length_replace
 
+        if model_paths is None:
+            raise ValueError(
+                "model_paths is required (set via driver_vesnet / tools.model_hub)"
+            )
+        mp = model_paths
+
         # Normalization values for advection (translation) networks
         self.advNetInputNorm = advNetInputNorm
         self.advNetOutputNorm = advNetOutputNorm
         self.mergedAdvNetwork = MergedAdvNetwork(
             self.advNetInputNorm.to(device),
             self.advNetOutputNorm.to(device),
-            model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained/adv_fft_ds32/2024Oct_ves_merged_adv.pth",
+            model_path=mp["adv"],
             device=device,
         )
 
@@ -382,7 +389,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
             self.dt,
             self.relaxNetInputNorm.to(device),
             self.relaxNetOutputNorm.to(device),
-            model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained/Ves_relax_downsample_DIFF.pth",
+            model_path=mp["relax"],
             device=device,
         )
 
@@ -392,8 +399,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.nearNetwork = MergedNearFourierNetwork(
             self.nearNetInputNorm.to(device),
             self.nearNetOutputNorm.to(device),
-            # model_path="../trained/ves_merged_nearFourier.pth",
-            model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained/near_trained/ves_merged_disth_nearFourier.pth",
+            model_path=mp["near"],
             device=device,
         )
 
@@ -403,7 +409,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.innerNearNetwork = MergedInnerNearFourierNetwork(
             self.innerNearNetInputNorm.to(device),
             self.innerNearNetOutputNorm.to(device),
-            model_path="/work/09452/alberto47/vista/Ves2Dpy/trained/2025ves_merged_disth_innerNearFourier.pth",
+            model_path=mp["inner_near"],
             device=device,
         )
 
@@ -420,8 +426,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.tenSelfNetwork = TenSelfNetwork_curv(
             self.tenSelfNetInputNorm.to(device),
             self.tenSelfNetOutputNorm.to(device),
-            # model_path = "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained/ves_downsample_selften_zerolevel.pth",
-            model_path="/work/09452/alberto47/ls6/vesicle_selften/save_models/Ves_2025Feb_downsample_selften_zerolevel_12blks_loss_0.01105_2242401_cuda2.pth",
+            model_path=mp["ten_self"],
             device=device,
             oc=oc,
         )
@@ -432,8 +437,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.tenAdvNetwork = MergedTenAdvNetwork(
             self.tenAdvNetInputNorm.to(device),
             self.tenAdvNetOutputNorm.to(device),
-            # model_path="/work/09452/alberto47/vista/Ves2Dpy/trained/2025Feb_merged_advten.pth",
-            model_path="/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/trained/advten_downsample32/2024Oct_merged_advten.pth",
+            model_path=mp["ten_adv"],
             device=device,
         )
 

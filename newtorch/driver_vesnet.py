@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from curve_batch_compile import Curve
 from tools.filter import interpft, interpft_vec
+from tools.model_hub import resolve_params_assets
 
 torch.set_default_dtype(torch.float32)
 cudnn.benchmark = True
@@ -310,20 +311,32 @@ def build_mlarm(
         logger=logger,
     )
 
+    model_paths = params.get("model_paths")
+    if not model_paths:
+        raise ValueError(
+            "model_paths missing; call resolve_params_assets() before build_mlarm()"
+        )
+
     if resolution == 32:
         return MLARM_manyfree_py(
             eta=rep["eta"],
             innerNearNetInputNorm=to_tensor(norms["inner_near_in"]),
             innerNearNetOutputNorm=to_tensor(norms["inner_near_out"]),
+            model_paths=model_paths,
             **common,
         )
-    return MLARM_manyfree_py(**common)
+    return MLARM_manyfree_py(model_paths=model_paths, **common)
 
 
 def simulate(params: dict[str, Any], logger: logging.Logger) -> None:
+    params = resolve_params_assets(params)
     resolution = int(params["resolution"])
     if resolution not in (32, 128):
         raise ValueError(f"resolution must be 32 or 128, got {resolution}")
+
+    logger.info("trained_root: %s", params.get("trained_root"))
+    if params.get("inner_near_root"):
+        logger.info("inner_near_root: %s", params["inner_near_root"])
 
     dtype = DTYPE_BY_RESOLUTION[resolution]
     torch.set_default_dtype(dtype)

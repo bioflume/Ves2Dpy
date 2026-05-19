@@ -360,8 +360,15 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         tenAdvNetOutputNorm,
         device,
         logger,
+        model_paths: dict | None = None,
     ):
         super().__init__()
+
+        if model_paths is None:
+            raise ValueError(
+                "model_paths is required (set via driver_vesnet / tools.model_hub)"
+            )
+        mp = model_paths
 
         self.dt = dt  # time step size
         self.vinf = (
@@ -382,8 +389,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.mergedAdvNetwork = MergedAdvNetwork(
             self.advNetInputNorm.to(device),
             self.advNetOutputNorm.to(device),
-            # model_path="../trained/2024Oct_ves_merged_adv.pth",
-            model_path="../trained/torch_script_models/2024Oct_ves_merged_adv.pt",
+            model_path=mp["adv"],
             device=device,
         )
 
@@ -394,8 +400,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
             self.dt,
             self.relaxNetInputNorm.to(device),
             self.relaxNetOutputNorm.to(device),
-            # model_path="../trained/ves_relax_DIFF_June8_625k_dt1e-5.pth",
-            model_path="../trained/torch_script_models/ves_relax_DIFF_June8_625k_dt1e-5.pt",
+            model_path=mp["relax"],
             device=device,
         )
 
@@ -405,8 +410,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.nearNetwork = MergedNearFourierNetwork(
             self.nearNetInputNorm.to(device),
             self.nearNetOutputNorm.to(device),
-            # model_path="../trained/ves_merged_disth_nearFourier.pth",
-            model_path="../trained/torch_script_models/ves_merged_disth_nearFourier.pt",
+            model_path=mp["near"],
             device=device,
         )
 
@@ -416,8 +420,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.tenSelfNetwork = TenSelfNetwork(
             self.tenSelfNetInputNorm.to(device),
             self.tenSelfNetOutputNorm.to(device),
-            # model_path = "../trained/Ves_2024Oct_selften_12blks_loss_0.00566cuda1.pth",
-            model_path="../trained/torch_script_models/Ves_2024Oct_selften_12blks_loss_0.00566cuda1.pt",
+            model_path=mp["ten_self"],
             device=device,
         )
 
@@ -427,8 +430,7 @@ class MLARM_manyfree_py(torch.jit.ScriptModule):
         self.tenAdvNetwork = MergedTenAdvNetwork(
             self.tenAdvNetInputNorm.to(device),
             self.tenAdvNetOutputNorm.to(device),
-            # model_path="../trained/2024Oct_ves_merged_advten.pth",
-            model_path="../trained/torch_script_models/2024Oct_ves_merged_advten.pt",
+            model_path=mp["ten_adv"],
             device=device,
         )
 
