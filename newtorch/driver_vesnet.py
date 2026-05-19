@@ -423,7 +423,7 @@ def simulate(params: dict[str, Any], logger: logging.Logger) -> None:
     for it in tqdm(range(num_steps)):
         # t_start = time.time()
         with torch.no_grad():
-            x, ten = mlarm.time_step_many(x, ten, nlayers=nlayers)
+            x, ten = mlarm.time_step(x, ten, nlayers=nlayers)
         # t_end = time.time()
 
         area, length = oc.geomProp(x)[1:]
