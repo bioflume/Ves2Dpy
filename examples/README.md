@@ -24,19 +24,15 @@ Examples: `shear_N32.npy` is `(64, 2)`; `48vesTG_N32.npy` is `(64, 48)`.
 ## Run
 
 ```bash
-export VES2D_TRAINED_ROOT=/path/to/Ves2Dpy_N32/trained
-export VES2D_INNER_NEAR_ROOT=/path/to/inner_downsample32
 
 ./examples/ex1_one_ves_parabolic/run.sh
 ./examples/ex2_two_ves_shear/run.sh      # needs shear_N32.npy
 ./examples/ex3_multi_ves_vortex/run.sh   # needs 48vesTG_N32.npy
 ```
 
-Copy data files into the example folders, or set `VES2D_SHEAR_IC` / `VES2D_TG_IC` to their paths.
-
 - **ex1** writes `initial.npy` as `(64, 1)` before running.
-- **ex2** loads all columns from `shear_N32.npy`.
-- **ex3** loads columns `[0, 6, 12, 18, 24, 30, 36, 42]` from `48vesTG_N32.npy` (edit `input_indices` to change).
+- **ex2** loads from `shear_N32.npy`.
+- **ex3** loads vesicle `[0, 6, 12, 18, 24, 30, 36, 42]` from `48vesTG_N32.npy` (edit `input_indices` to change).
 
 ```bash
 ./examples/ex1_one_ves_parabolic/run.sh --num-steps 100
@@ -60,8 +56,3 @@ Requires **matplotlib**, **opencv-python** (`cv2`), and **tqdm**.
 - `<outfile>.log` — run log
 - With `--postprocess`: `output/<outfile>/*.png` and `output/<outfile>.mp4`
 
-## Regenerate ex1 initial conditions
-
-```bash
-python examples/make_initial_conditions.py
-```
