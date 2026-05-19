@@ -1,2 +1,0 @@
-# Optional: automatic download of trained weights from Hugging Face Hub
-huggingface_hub>=0.20.0

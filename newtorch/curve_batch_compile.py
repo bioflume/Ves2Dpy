@@ -4,16 +4,11 @@ import numpy as np
 torch.set_default_dtype(torch.float32)
 # from scipy.interpolate import CubicSpline
 # from scipy.optimize import minimize
-# from fft1 import fft1
+# from fft_tools import fft_tools
 # from scipy.interpolate import interp1d
 import torch.nn as nn
-import time
-# import cupy as cp
 from filter import interpft, upsample_fft
 from typing import Tuple
-# from scipy.io import loadmat
-# import matlab.engine
-# eng = matlab.engine.start_matlab()
 
 
 class Curve():
@@ -364,7 +359,6 @@ class Curve():
             # raise ValueError("J matrix contains NaN or Inf values.")
         
         # Eigen decomposition
-        # import pdb; pdb.set_trace()
         eig_vals, eig_vecs = torch.linalg.eig(J)
         
         # Select the eigenvector corresponding to the smallest eigenvalue
@@ -384,8 +378,6 @@ class Curve():
         x, y = self.getXY(X)
         N = x.shape[0]
         nv = x.shape[1]
-        # f = fft1(N)
-        # IK = f.modes(N, nv, device=X.device)
         IK = 1.0j * torch.concatenate((torch.arange(0, N / 2, device=X.device), torch.tensor([0.], device=X.device), torch.arange(-N / 2 + 1, 0, device=X.device))).to(X.device) #.double()
         IK = IK[:,None].expand(-1, nv)
 
@@ -411,8 +403,6 @@ class Curve():
 
         tangent = torch.vstack((Dx / jacobian, Dy / jacobian))
 
-        # f = fft1(N)
-        # IK = f.modes(N, nv, X.device)
         IK = 1.0j * torch.concatenate((torch.arange(0, N / 2, device=X.device), torch.tensor([0], device=X.device), torch.arange(-N / 2 + 1, 0, device=X.device))).to(X.device) #.double()
         IK = IK[:,None].expand(-1, nv)
 

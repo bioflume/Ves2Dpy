@@ -1,8 +1,7 @@
 import torch
 torch.set_default_dtype(torch.float32)
-# from scipy.interpolate import interp1d
 from curve_batch_compile import Curve
-from fft1 import fft1
+from fft_tools import fft_tools
 
 class capsules:
     """
@@ -48,7 +47,7 @@ class capsules:
 
         # ordering of the fourier modes.  It is faster to compute once here and
         # pass it around to the fft differentitation routine
-        f = fft1(self.N)
+        f = fft_tools(self.N)
         self.IK = f.modes(self.N, self.nv, X.device)
 
     def tracJump(self, f, sigma):
@@ -100,7 +99,7 @@ class capsules:
         # Ten = torch.zeros((2 * self.N, self.N, self.nv))
         # Div = torch.zeros((self.N, 2 * self.N, self.nv))
 
-        f = fft1(self.N)
+        f = fft_tools(self.N)
         D1 = f.fourierDiff(self.N)
         D1 = D1.to(self.X.device)
 

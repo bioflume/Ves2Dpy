@@ -20,7 +20,6 @@ from filter import (
     gaussian_filter_1d_energy_preserve,
 )
 from filter import rescale_outlier_vel, rescale_outlier_vel_abs, rescale_outlier_trans
-from torch.profiler import profile, record_function, ProfilerActivity
 
 from model_zoo_N32.get_network_torch_N32_compile import (
     RelaxNetwork,

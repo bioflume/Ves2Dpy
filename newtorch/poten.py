@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from fft1 import fft1
+from fft_tools import fft_tools
 from capsules import capsules
 from curve_batch_compile import Curve
 from filter import interpft_vec
@@ -34,7 +34,7 @@ class Poten:
 
         self.interpMat = self.lagrange_interp()
         # Compute restriction and prolongation matrices
-        self.Restrict_LP, self.Prolong_LP = fft1.fourierRandP(self.N, self.Nup)
+        self.Restrict_LP, self.Prolong_LP = fft_tools.fourierRandP(self.N, self.Nup)
 
 
     def stokesSLmatrix(self, vesicle):
@@ -805,7 +805,7 @@ class Poten:
         
         # Compute interpolation matrices
         # Placeholder for sinc interpolation function (replace with actual implementation)
-        of = fft1(N)
+        of = fft_tools(N)
         
         A1 = of.sinterpS_(N, v*h)
         A2 = of.sinterpS_(N, 2*torch.pi-torch.flip(v*h, [0]))
@@ -860,72 +860,3 @@ class Poten:
         ], dtype=torch.float32)
 
         return LP
-
-# Example usage
-# N = 16  # Set an appropriate N value
-# qw, qp, Rbac, Rfor = singQuadStokesSLmatrix(N)
-# # print(qw)
-# # print(qp)
-# print(Rbac)
-# print(Rfor)
-
-# N = 16
-# X = torch.tensor(
-#     [[0.8599, 0.0863, 0.4132],
-#         [0.3454, 0.4931, 0.9693],
-#         [0.8920, 0.1510, 0.9593],
-#         [0.8617, 0.0423, 0.8422],
-#         [0.5763, 0.4830, 0.0940],
-#         [0.1764, 0.8653, 0.7828],
-#         [0.8798, 0.8578, 0.0333],
-#         [0.4542, 0.5439, 0.1797],
-#         [0.5168, 0.3419, 0.0768],
-#         [0.0115, 0.6494, 0.1903],
-#         [0.0993, 0.7038, 0.8806],
-#         [0.2223, 0.0909, 0.2299],
-#         [0.8176, 0.8592, 0.5057],
-#         [0.6101, 0.3934, 0.7653],
-#         [0.8687, 0.5387, 0.0578],
-#         [0.2790, 0.6853, 0.8112]]
-# )
-
-# X = torch.tensor(
-#     [[0.1818, 0.1459, 0.1868, 0.0616],
-#         [0.0265, 0.3467, 0.8279, 0.0041],
-#         [0.7317, 0.4133, 0.6540, 0.7822],
-#         [0.9248, 0.4949, 0.9423, 0.3238],
-#         [0.8524, 0.9184, 0.5882, 0.7911],
-#         [0.1531, 0.1649, 0.0686, 0.0024],
-#         [0.8971, 0.7035, 0.2109, 0.0119],
-#         [0.7806, 0.2802, 0.8062, 0.8937],
-#         [0.4480, 0.4619, 0.1555, 0.6016],
-#         [0.4711, 0.6571, 0.3333, 0.1418],
-#         [0.2738, 0.2125, 0.3279, 0.3178],
-#         [0.5723, 0.1634, 0.6184, 0.7612],
-#         [0.9286, 0.9554, 0.6151, 0.0986],
-#         [0.9285, 0.0014, 0.3947, 0.3728],
-#         [0.6724, 0.1632, 0.1417, 0.1725],
-#         [0.3674, 0.8188, 0.0189, 0.0784]]
-# )
-# f = torch.tensor(
-#     [[0.2150, 0.4940, 0.8152, 0.3232],
-#         [0.8916, 0.8903, 0.3387, 0.1970],
-#         [0.7910, 0.3858, 0.9156, 0.3808],
-#         [0.3705, 0.7803, 0.8281, 0.1586],
-#         [0.1098, 0.2964, 0.8263, 0.9500],
-#         [0.6343, 0.5572, 0.4944, 0.0960],
-#         [0.5035, 0.3945, 0.5819, 0.3653],
-#         [0.3040, 0.6726, 0.3060, 0.0929],
-#         [0.4984, 0.5615, 0.6630, 0.7215],
-#         [0.1431, 0.1372, 0.7046, 0.5475],
-#         [0.9208, 0.7720, 0.8337, 0.2339],
-#         [0.4214, 0.5023, 0.4246, 0.4220],
-#         [0.5682, 0.5950, 0.4241, 0.6812],
-#         [0.9907, 0.5678, 0.4912, 0.5115],
-#         [0.4176, 0.5109, 0.2031, 0.4541],
-#         [0.0429, 0.1609, 0.2672, 0.1612]]
-# )
-# ves = capsules(X, None, None, torch.tensor([1.]), torch.tensor([1., 0.5, 0.3, 0.2]))
-# op = Poten(N//2)
-# D = op.stokesDLmatrix(ves)
-# print(D.shape)
