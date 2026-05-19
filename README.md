@@ -8,12 +8,25 @@ The repository contains a **MATLAB reference implementation** (`matlab_version/`
 
 ## Requirements
 
-### Core (simulation)
+### Core (VesNet)
 
 | Package | Used for |
 |---------|----------|
 | [PyTorch](https://pytorch.org/) | Tensors, networks, CUDA (recommended) |
 | NumPy | Initial conditions, I/O |
+
+### Ground truth (BIEM)
+
+| Package | Used for |
+|---------|----------|
+| [CuPy](https://docs.cupy.dev/) | **Required** — GMRES in `tstep_biem.py` (`import cupy`; `cupyx.scipy.sparse.linalg.gmres` on GPU) |
+| PyTorch + CUDA | Vesicle geometry and Stokes operators (BIEM expects a CUDA device) |
+
+Install a CuPy wheel that matches your CUDA toolkit, for example:
+
+```bash
+pip install cupy-cuda12x   # CUDA 12.x — see https://docs.cupy.dev/en/stable/install.html
+```
 
 ### Automatic model download
 
@@ -30,8 +43,7 @@ The repository contains a **MATLAB reference implementation** (`matlab_version/`
 
 **Python**: 3.10+ recommended.
 
-**Hardware**: CUDA GPU strongly recommended for VesNet at useful problem sizes, but CPU is compatible.
-
+**Hardware**: CUDA GPU strongly recommended, but CPU is compatible. 
 ---
 
 ## Installation
@@ -53,7 +65,13 @@ Install a build that matches your CUDA version from [pytorch.org](https://pytorc
 ### 4. Install Python dependencies
 
 ```bash
-pip install numpy scipy tqdm huggingface_hub torchsummary
+pip install numpy scipy tqdm huggingface_hub torchsumamry
+```
+
+For **BIEM** on (in addition to a CUDA-enabled PyTorch build):
+
+```bash
+pip install cupy-cuda12x   # pick cupy-cuda11x / cupy-cuda12x to match your driver
 ```
 
 Optional (plotting / video from examples):
@@ -127,9 +145,13 @@ Minimal `config.json` fields: `input`, `outfile`, `output_dir`, `num_steps`, `dt
 
 ### Ground-truth BIEM
 
+BIEM uses **CuPy** for the GMRES linear solve (`torch_version/tstep_biem.py`). Install CuPy for your CUDA version (see [Requirements](#ground-truth-biem)) and use a machine with a CUDA-capable GPU. Otherwise, scipy is used.
+
 Edit simulation parameters at the bottom of `torch_version/driver_BIEM.py` (or import `initVes2D` / `TStepBiem` from your own script), then:
 
 ```bash
+pip install cupy-cuda12x   # once, matching your CUDA toolkit
+
 cd torch_version
 export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 python driver_BIEM.py
