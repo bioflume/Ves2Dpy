@@ -1,10 +1,10 @@
 {
-  "input": "/work/09452/alberto47/ls6/vesToPY/Ves2Dpy_N32/shear_N32.npy",
-  "outfile": "linshi",
+  "input": "../examples/ex2_two_ves_shear/shear_N32.npy",
+  "outfile": "debug",
   "output_dir": "./output",
   "logging": true,
   "resolution": 32,
-  "num_steps": 100000,
+  "num_steps": 300,
   "dt": 1e-5,
   "flow": {
     "name": "vortex",
@@ -13,8 +13,8 @@
     "vortexSize": 2.5
   },
   "rbf_params": {
-    "nlayers": 5,
-    "rbf_upsample": 4
+    "nlayers": 3,
+    "rbf_upsample": 2
   },
   "repulsion_params": {
     "use_repulsion": false,
@@ -22,7 +22,7 @@
     "eta": 0.03125
   },
   "use_hf_hub": true,
-  "hf_repo": "ves2d/ves2d-trained",
+  "hf_repo": "shanzhong48/ves2d-trained",
   "trained_root": null,
   "inner_near_root": null,
   "relaxed_shape": "relaxed_shape.npy"
